@@ -1,0 +1,236 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIQUID GLASS BUTTONS — iCloud / Apple Vision Pro style
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.glass-btn {
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  backdrop-filter: blur(24px) saturate(1.8);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  transition: all 280ms cubic-bezier(0.32,0.72,0,1);
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+/* Specular highlight (top sheen) */
+.glass-btn::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 50%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 100%);
+  border-radius: 999px 999px 0 0;
+  pointer-events: none;
+}
+/* Rim light (bottom edge) */
+.glass-btn::after {
+  content: '';
+  position: absolute; bottom: 0; left: 10%; right: 10%;
+  height: 1px;
+  background: rgba(255,255,255,0.12);
+  pointer-events: none;
+}
+
+/* ── Violet glass (Video, primary) */
+.glass-btn-violet {
+  background: linear-gradient(135deg, rgba(139,92,246,0.40) 0%, rgba(109,40,217,0.28) 100%);
+  border: 1px solid rgba(167,139,250,0.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.22),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 4px 24px rgba(124,58,237,0.28),
+    0 1px 4px rgba(0,0,0,0.3);
+  color: rgba(255,255,255,0.95);
+}
+.glass-btn-violet:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(167,139,250,0.50) 0%, rgba(124,58,237,0.38) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.3),
+    inset 0 -1px 0 rgba(0,0,0,0.15),
+    0 8px 36px rgba(124,58,237,0.38),
+    0 2px 8px rgba(0,0,0,0.35);
+  transform: scale(1.015) translateY(-1px);
+}
+
+/* ── Blue glass (Image) */
+.glass-btn-blue {
+  background: linear-gradient(135deg, rgba(59,130,246,0.38) 0%, rgba(29,78,216,0.26) 100%);
+  border: 1px solid rgba(96,165,250,0.32);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.2),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 4px 24px rgba(37,99,235,0.25),
+    0 1px 4px rgba(0,0,0,0.3);
+  color: rgba(255,255,255,0.95);
+}
+.glass-btn-blue:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(96,165,250,0.48) 0%, rgba(37,99,235,0.36) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.28),
+    inset 0 -1px 0 rgba(0,0,0,0.15),
+    0 8px 36px rgba(37,99,235,0.35),
+    0 2px 8px rgba(0,0,0,0.35);
+  transform: scale(1.015) translateY(-1px);
+}
+
+/* ── Neutral glass (Toolbar, secondary) */
+.glass-btn-neutral {
+  background: linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    inset 0 -1px 0 rgba(0,0,0,0.12),
+    0 2px 12px rgba(0,0,0,0.25);
+  color: rgba(255,255,255,0.75);
+}
+.glass-btn-neutral:hover {
+  background: linear-gradient(135deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.10) 100%);
+  color: rgba(255,255,255,0.95);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.25),
+    inset 0 -1px 0 rgba(0,0,0,0.1),
+    0 4px 20px rgba(0,0,0,0.3);
+  transform: scale(1.02);
+}
+
+.glass-btn:disabled { opacity: 0.30; cursor: not-allowed; transform: none !important; }
+.glass-btn:active:not(:disabled) { transform: scale(0.975) !important; }
+
+/* Shimmer sweep — liquid glass reflection */
+@keyframes glass-shimmer {
+  0%   { left: -80%; }
+  60%, 100% { left: 130%; }
+}
+.glass-btn:not(:disabled)::before {
+  animation: glass-shimmer 4s ease-in-out infinite;
+}
+
+/* Template panel slide-in */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.templates-panel { animation: slideInRight 320ms cubic-bezier(0.32,0.72,0,1); }
+
+/* Gallery cell pulse loading */
+@keyframes cell-pulse {
+  0%,100% { opacity: 0.25; }
+  50%      { opacity: 0.55; }
+}
+.cell-loading { animation: cell-pulse 1.6s ease-in-out infinite; }
+
+/* Template card hover */
+.tpl-card {
+  transition: all 200ms cubic-bezier(0.32,0.72,0,1);
+}
+.tpl-card:hover {
+  background: rgba(255,255,255,0.05) !important;
+  border-color: rgba(167,139,250,0.2) !important;
+  transform: translateY(-1px);
+}
+
+/* ── Seg control selected glass pill */
+.glass-seg-selected {
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.2),
+    0 2px 8px rgba(0,0,0,0.25);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WORKFLOW EDGES & HANDLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.react-flow__handle {
+  transition: transform 200ms cubic-bezier(0.32,0.72,0,1), box-shadow 200ms ease, opacity 200ms ease;
+}
+.react-flow__handle:hover {
+  transform: scale(1.35);
+  filter: brightness(1.3);
+}
+/* Connection line while dragging */
+.react-flow__connection-line .react-flow__handle-connecting {
+  box-shadow: 0 0 0 6px rgba(167,139,250,0.25);
+}
+
+/* Custom GradientEdge handles all path styling — these are fallback only */
+.react-flow__edge .react-flow__edge-path {
+  stroke: rgba(255,255,255,0.08);
+  stroke-width: 1.2;
+}
+.react-flow__edge:hover .react-flow__edge-path,
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: rgba(167,139,250,0.5);
+}
+
+/* Live connection line while dragging */
+.react-flow__connection-path {
+  stroke: rgba(167,139,250,0.65);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgba(167,139,250,0.5));
+  animation: flow-dash 0.9s linear infinite;
+}
+@keyframes flow-dash { to { stroke-dashoffset: -22; } }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GLOBAL BASE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.xterm { background: transparent !important; }
+.xterm-viewport { background: transparent !important; }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #root { width: 100%; height: 100%; }
+
+body {
+  font-family: 'Plus Jakarta Sans', -apple-system, 'SF Pro Display', sans-serif;
+  background: #050508;
+}
+
+/* Atmospheric mesh */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse at 15% 55%, rgba(109,40,217,0.08) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 15%, rgba(16,185,129,0.06) 0%, transparent 45%),
+    radial-gradient(ellipse at 65% 85%, rgba(59,130,246,0.06) 0%, transparent 45%);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); }
+
+/* ReactFlow controls glass */
+.react-flow__controls {
+  background: rgba(8,8,16,0.7) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  border-radius: 16px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4) !important;
+}
+.react-flow__controls-button {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+  color: rgba(255,255,255,0.4) !important;
+  transition: color 200ms ease, background 200ms ease !important;
+}
+.react-flow__controls-button:hover {
+  background: rgba(255,255,255,0.06) !important;
+  color: rgba(255,255,255,0.85) !important;
+}
+.react-flow__controls-button svg { fill: currentColor !important; }
