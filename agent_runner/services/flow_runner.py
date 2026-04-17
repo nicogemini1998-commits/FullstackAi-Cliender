@@ -10,7 +10,7 @@ from ..services.agent_service import stream_agent, run_agent
 from ..services.redis_queue import NodeQueue, publish_run_event
 from ..services.apollo_service import search_leads
 from ..services.scraping_service import analyze_website
-from ..services.apify_service import enrich_companies_with_gmb
+from ..services.apify_service import enrich_companies_with_gmb, search_businesses_on_maps
 
 
 def _strip_code_blocks(text: str) -> str:
@@ -50,13 +50,13 @@ def _parse_input_params(text: str) -> dict:
 
 
 async def _get_ordered_nodes(flow_id: str) -> list[dict]:
-    """Devuelve nodos ordenados por order_index (topológico simple)."""
+    """Devuelve nodos activos ordenados (order_index < 90 = activos)."""
     async with db_conn() as conn:
         rows = await conn.fetch(
             """
             SELECT id, node_type, label, system_prompt, config, order_index
             FROM flow_nodes
-            WHERE flow_id = $1
+            WHERE flow_id = $1 AND order_index < 90
             ORDER BY order_index ASC
             """,
             uuid.UUID(flow_id),
@@ -177,16 +177,33 @@ async def run_flow(
                 await ws_manager.send_to_node(node_id, {"type": "done"})
 
             elif node_type == "apify_agent":
-                companies = _parse_json_safe(current_input)
+                # Si recibe string de parámetros (trigger) → fuente primaria de leads
+                # Si recibe JSON array → enriquece GMB sobre empresas ya existentes
+                prior = _parse_json_safe(current_input)
+                params = _parse_input_params(current_input)
+                if not prior and (params.get("sector") or params.get("ciudad")):
+                    # MODO PRIMARIO: buscar negocios en Google Maps
+                    sector = params.get("sector", config.get("sector", "restaurantes"))
+                    city   = params.get("ciudad", config.get("city", "Madrid"))
+                    qty    = int(params.get("cantidad", config.get("qty", 10)))
+                    await ws_manager.send_to_node(node_id, {
+                        "type": "token",
+                        "data": f"📍 Buscando '{sector}' en {city} — {qty} negocios...",
+                    })
+                    companies = await search_businesses_on_maps(sector, city, qty)
+                else:
+                    # MODO ENRIQUECIMIENTO: añadir GMB a lista ya existente
+                    companies = prior
+                    await ws_manager.send_to_node(node_id, {
+                        "type": "token",
+                        "data": f"📍 Enriqueciendo {len(companies)} empresas con GMB...",
+                    })
+                    companies = await enrich_companies_with_gmb(companies)
+
+                output = json.dumps(companies, ensure_ascii=False)
                 await ws_manager.send_to_node(node_id, {
                     "type": "token",
-                    "data": f"📍 Buscando en Google Maps {len(companies)} empresas...",
-                })
-                enriched = await enrich_companies_with_gmb(companies)
-                output = json.dumps(enriched, ensure_ascii=False)
-                await ws_manager.send_to_node(node_id, {
-                    "type": "token",
-                    "data": f"\n✅ Apify: GMB data añadida a {len(enriched)} empresas",
+                    "data": f"\n✅ Apify: {len(companies)} empresas obtenidas",
                 })
                 await ws_manager.send_to_node(node_id, {"type": "done"})
 

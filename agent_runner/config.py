@@ -34,7 +34,8 @@ class Settings(BaseSettings):
     max_executions_per_minute: int = 10
 
     class Config:
-        env_file = "../.env"
+        env_file = "/var/www/fullstackai/.env"
+        env_file_encoding = "utf-8"
         extra = "ignore"
 
 

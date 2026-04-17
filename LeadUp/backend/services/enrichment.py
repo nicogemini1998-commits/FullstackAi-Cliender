@@ -6,6 +6,15 @@ from ..database import db_conn
 from .fullstackai_client import trigger_enrichment
 
 
+def _to_str(v) -> str | None:
+    """Convierte cualquier tipo a string para columnas TEXT."""
+    if v is None:
+        return None
+    if isinstance(v, list):
+        return "\n".join(f"• {item}" if not str(item).startswith("•") else str(item) for item in v)
+    return str(v)
+
+
 def _extract_json(text: str) -> list:
     """
     Extrae empresas del texto aunque el JSON esté truncado.
@@ -117,16 +126,16 @@ async def _save_company(data: dict):
                 bool(data.get("has_google_ads")),
                 data.get("seo_score", 0),
                 data.get("opportunity_level"),
-                data.get("opportunity_sales"),
-                data.get("opportunity_tech"),
-                data.get("opportunity_av"),
-                data.get("summary"),
-                data.get("redes_sociales"),
-                data.get("captacion_leads"),
-                data.get("email_marketing"),
-                data.get("video_contenido"),
-                data.get("seo_info"),
-                data.get("oportunidad_hbd"),
+                _to_str(data.get("opportunity_sales")),
+                _to_str(data.get("opportunity_tech")),
+                _to_str(data.get("opportunity_av")),
+                _to_str(data.get("summary")),
+                _to_str(data.get("redes_sociales")),
+                _to_str(data.get("captacion_leads")),
+                _to_str(data.get("email_marketing")),
+                _to_str(data.get("video_contenido")),
+                _to_str(data.get("seo_info")),
+                _to_str(data.get("oportunidad_hbd")),
                 json.dumps(data),
             )
             if not company:

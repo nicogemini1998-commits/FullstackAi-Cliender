@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     enrichment_qty: int = 10
 
     class Config:
-        env_file = ".env"
+        env_file = "/var/www/fullstackai/LeadUp/backend/.env"
+        env_file_encoding = "utf-8"
         extra = "ignore"
 
 
