@@ -16,8 +16,15 @@ async def run_enrichment(sector: str, city: str, qty: int) -> dict:
         return {"ok": False, "error": result["error"]}
 
     raw_output = result.get("output", "")
+    # Extraer JSON de dentro de bloques ```json ... ``` si Claude los añade
+    clean = raw_output.strip()
+    if clean.startswith("```"):
+        clean = clean.split("```")[1]
+        if clean.startswith("json"):
+            clean = clean[4:]
+        clean = clean.strip()
     try:
-        companies = json.loads(raw_output)
+        companies = json.loads(clean)
     except (json.JSONDecodeError, ValueError):
         return {"ok": False, "error": "Output del flujo no es JSON válido", "raw": raw_output[:500]}
 

@@ -16,7 +16,7 @@ def get_client() -> anthropic.AsyncAnthropic:
 async def run_agent(
     system_prompt: str,
     user_message: str,
-    model: str = "claude-sonnet-4-6",
+    model: str = "claude-haiku-4-5-20251001",
     max_tokens: int = 4096,
 ) -> str:
     """Ejecuta un agente Claude y devuelve el output completo."""
@@ -33,7 +33,7 @@ async def run_agent(
 async def stream_agent(
     system_prompt: str,
     user_message: str,
-    model: str = "claude-sonnet-4-6",
+    model: str = "claude-haiku-4-5-20251001",
     max_tokens: int = 4096,
 ) -> AsyncIterator[str]:
     """Ejecuta un agente Claude en streaming, yield token a token."""

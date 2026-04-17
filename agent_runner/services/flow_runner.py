@@ -13,6 +13,25 @@ from ..services.scraping_service import analyze_website
 from ..services.apify_service import enrich_companies_with_gmb
 
 
+def _strip_code_blocks(text: str) -> str:
+    """Elimina markdown code blocks que Claude añade alrededor del JSON."""
+    s = text.strip()
+    if s.startswith("```"):
+        lines = s.split("\n")
+        # quitar primera línea (```json o ```) y última (```)
+        inner = lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
+        return "\n".join(inner).strip()
+    return s
+
+
+def _parse_json_safe(text: str) -> list:
+    """Parsea JSON limpiando code blocks primero. Devuelve [] si falla."""
+    try:
+        return json.loads(_strip_code_blocks(text))
+    except (json.JSONDecodeError, ValueError):
+        return []
+
+
 def _safe_uuid(v: Optional[str]):
     try:
         return uuid.UUID(v) if v else None
@@ -55,7 +74,7 @@ async def _create_run(flow_id: str, started_by: str, input_data: dict) -> str:
             """,
             uuid.UUID(flow_id),
             _safe_uuid(started_by),
-            input_data,
+            json.dumps(input_data),
         )
     return str(row["id"])
 
@@ -83,8 +102,8 @@ async def _complete_run(run_id: str, output_data: dict, status: str = "completed
             WHERE id = $4
             """,
             status,
-            datetime.now(timezone.utc),
-            output_data,
+            datetime.utcnow(),
+            json.dumps(output_data),
             uuid.UUID(run_id),
         )
 
@@ -118,7 +137,8 @@ async def run_flow(
             node_id = str(node["id"])
             node_type = node["node_type"]
             system_prompt = node.get("system_prompt") or ""
-            config = node.get("config") or {}
+            raw_config = node.get("config") or {}
+            config = json.loads(raw_config) if isinstance(raw_config, str) else (raw_config or {})
 
             # Notificar nodo activo
             await ws_manager.send_to_node(node_id, {
@@ -135,7 +155,13 @@ async def run_flow(
             next_node = nodes[i + 1] if i + 1 < len(nodes) else None
             next_id = str(next_node["id"]) if next_node else None
 
-            if node_type == "apollo_agent":
+            if node_type == "trigger":
+                # Trigger: pasa el input tal cual sin llamar a Claude
+                output = current_input
+                await ws_manager.send_to_node(node_id, {"type": "token", "data": f"▶ {current_input}"})
+                await ws_manager.send_to_node(node_id, {"type": "done"})
+
+            elif node_type == "apollo_agent":
                 # Nodo especializado: llama Apollo API real
                 params = _parse_input_params(current_input)
                 leads = await search_leads(
@@ -151,10 +177,7 @@ async def run_flow(
                 await ws_manager.send_to_node(node_id, {"type": "done"})
 
             elif node_type == "apify_agent":
-                try:
-                    companies = json.loads(current_input)
-                except (json.JSONDecodeError, ValueError):
-                    companies = []
+                companies = _parse_json_safe(current_input)
                 await ws_manager.send_to_node(node_id, {
                     "type": "token",
                     "data": f"📍 Buscando en Google Maps {len(companies)} empresas...",
@@ -169,10 +192,7 @@ async def run_flow(
 
             elif node_type == "scraping_agent":
                 # Nodo especializado: analiza webs con Scrapling real
-                try:
-                    companies = json.loads(current_input)
-                except (json.JSONDecodeError, ValueError):
-                    companies = []
+                companies = _parse_json_safe(current_input)
                 enriched = []
                 for company in companies:
                     website = company.get("website") or ""
@@ -193,10 +213,10 @@ async def run_flow(
                 })
                 await ws_manager.send_to_node(node_id, {"type": "done"})
 
-            elif node_type in ("agent", "trigger"):
+            elif node_type == "agent":
                 # Nodo Claude genérico — streaming token a token
                 prompt = system_prompt.format(**config) if config else system_prompt
-                model = config.get("model", "claude-sonnet-4-6")
+                model = config.get("model", "claude-haiku-4-5-20251001")
                 max_tokens = config.get("max_tokens", 4096)
 
                 output_parts = []

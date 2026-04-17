@@ -41,7 +41,11 @@ async def search_leads(
             resp = await client.post(
                 f"{APOLLO_BASE}/mixed_people/search",
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "Cache-Control": "no-cache",
+                    "X-Api-Key": key,
+                },
             )
             resp.raise_for_status()
             data = resp.json()
@@ -77,7 +81,11 @@ async def search_leads(
             "is_primary": len(companies[org_name]["contacts"]) == 0,
         })
 
-    return list(companies.values())[:qty]
+    result = list(companies.values())[:qty]
+    # Fallback a mock si Apollo no devolvió resultados
+    if not result:
+        return _mock_leads(sector, city, qty, error="Apollo returned 0 results — using mock data")
+    return result
 
 
 def _mock_leads(sector: str, city: str, qty: int, error: Optional[str] = None) -> list[dict]:
