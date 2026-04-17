@@ -1,0 +1,24 @@
+[Unit]
+Description=FullStackAI Agent Runner (FastAPI :8001)
+After=network.target postgresql.service redis.service
+Wants=redis.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/fullstackai
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/var/www/fullstackai/.env
+ExecStart=/var/www/fullstackai/agent_runner/.venv/bin/uvicorn \
+    agent_runner.main:app \
+    --host 0.0.0.0 \
+    --port 8001 \
+    --workers 2
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=agent-runner
+
+[Install]
+WantedBy=multi-user.target

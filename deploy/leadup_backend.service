@@ -1,0 +1,23 @@
+[Unit]
+Description=LeadUp CRM Backend (FastAPI :8002)
+After=network.target postgresql.service agent_runner.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/fullstackai
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/var/www/fullstackai/LeadUp/backend/.env
+ExecStart=/var/www/fullstackai/LeadUp/backend/.venv/bin/uvicorn \
+    LeadUp.backend.main:app \
+    --host 0.0.0.0 \
+    --port 8002 \
+    --workers 2
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=leadup-backend
+
+[Install]
+WantedBy=multi-user.target
