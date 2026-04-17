@@ -1,28 +1,149 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: dark; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #root { width: 100%; min-height: 100%; }
 
 body {
-  margin: 0;
-  background: #0a1628;
-  color: #f1f5f9;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  background: #050508;
+  color: rgba(255,255,255,0.88);
   -webkit-font-smoothing: antialiased;
 }
 
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: #0f2040; }
-::-webkit-scrollbar-thumb { background: #1a3a6b; border-radius: 9999px; }
+/* Atmospheric mesh — igual que FullStackAI */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse at 15% 55%, rgba(109,40,217,0.07) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 15%, rgba(16,185,129,0.05) 0%, transparent 45%),
+    radial-gradient(ellipse at 65% 85%, rgba(59,130,246,0.05) 0%, transparent 45%);
+}
 
-.badge-alta   { background: rgba(16,185,129,.15); color: #34d399; border: 1px solid rgba(16,185,129,.3); }
-.badge-media  { background: rgba(245,158,11,.15); color: #fbbf24; border: 1px solid rgba(245,158,11,.3); }
-.badge-baja   { background: rgba(107,114,128,.15); color: #9ca3af; border: 1px solid rgba(107,114,128,.3); }
+#root { position: relative; z-index: 1; }
 
-.status-closed    { background: rgba(16,185,129,.15); color: #34d399; border: 1px solid rgba(16,185,129,.3); }
-.status-rejected  { background: rgba(239,68,68,.15);  color: #f87171; border: 1px solid rgba(239,68,68,.3); }
-.status-no_answer { background: rgba(107,114,128,.15); color: #9ca3af; border: 1px solid rgba(107,114,128,.3); }
-.status-pending   { background: rgba(59,130,246,.15); color: #60a5fa; border: 1px solid rgba(59,130,246,.3); }
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 999px; }
+
+/* ── Liquid Glass base ───────────────────────────────────────────────────── */
+.glass {
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.glass-card {
+  background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 20px;
+  transition: border-color 220ms cubic-bezier(0.32,0.72,0,1),
+              box-shadow   220ms cubic-bezier(0.32,0.72,0,1);
+}
+.glass-card:hover {
+  border-color: rgba(255,255,255,0.13);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+}
+
+/* ── Liquid Glass Buttons ────────────────────────────────────────────────── */
+.glass-btn {
+  position: relative; overflow: hidden;
+  border-radius: 999px;
+  backdrop-filter: blur(24px) saturate(1.8);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  transition: all 280ms cubic-bezier(0.32,0.72,0,1);
+  cursor: pointer; border: none; outline: none;
+}
+.glass-btn::before {
+  content: '';
+  position: absolute; top: 0; left: -80%; right: 0;
+  width: 60%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+  animation: glass-shimmer 4s ease-in-out infinite;
+  pointer-events: none;
+}
+.glass-btn::after {
+  content: '';
+  position: absolute; bottom: 0; left: 10%; right: 10%;
+  height: 1px; background: rgba(255,255,255,0.12);
+}
+@keyframes glass-shimmer {
+  0%   { left: -80%; }
+  60%, 100% { left: 130%; }
+}
+.glass-btn:disabled { opacity: 0.30; cursor: not-allowed; transform: none !important; }
+.glass-btn:active:not(:disabled) { transform: scale(0.975) !important; }
+
+.glass-btn-blue {
+  background: linear-gradient(135deg, rgba(59,130,246,0.38) 0%, rgba(29,78,216,0.26) 100%);
+  border: 1px solid rgba(96,165,250,0.32);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 24px rgba(37,99,235,0.25);
+  color: rgba(255,255,255,0.95);
+}
+.glass-btn-blue:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(96,165,250,0.48) 0%, rgba(37,99,235,0.36) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 8px 36px rgba(37,99,235,0.35);
+  transform: scale(1.015) translateY(-1px);
+}
+
+.glass-btn-green {
+  background: linear-gradient(135deg, rgba(16,185,129,0.35) 0%, rgba(5,150,105,0.22) 100%);
+  border: 1px solid rgba(52,211,153,0.28);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 4px 24px rgba(16,185,129,0.22);
+  color: rgba(255,255,255,0.95);
+}
+.glass-btn-green:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(52,211,153,0.45) 0%, rgba(16,185,129,0.32) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), 0 8px 36px rgba(16,185,129,0.32);
+  transform: scale(1.015) translateY(-1px);
+}
+
+.glass-btn-neutral {
+  background: linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.16), 0 2px 12px rgba(0,0,0,0.25);
+  color: rgba(255,255,255,0.7);
+}
+.glass-btn-neutral:hover {
+  background: linear-gradient(135deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.10) 100%);
+  color: rgba(255,255,255,0.95);
+  transform: scale(1.02);
+}
+
+/* ── Status badges ───────────────────────────────────────────────────────── */
+.badge-alta  { background: rgba(16,185,129,.12); color: #34d399; border: 1px solid rgba(16,185,129,.25); }
+.badge-media { background: rgba(245,158,11,.12); color: #fbbf24; border: 1px solid rgba(245,158,11,.25); }
+.badge-baja  { background: rgba(107,114,128,.12); color: #9ca3af; border: 1px solid rgba(107,114,128,.2); }
+
+.status-closed    { background: rgba(16,185,129,.12); color: #34d399; border: 1px solid rgba(16,185,129,.25); }
+.status-rejected  { background: rgba(239,68,68,.12);  color: #f87171; border: 1px solid rgba(239,68,68,.25); }
+.status-no_answer { background: rgba(107,114,128,.12); color: #9ca3af; border: 1px solid rgba(107,114,128,.2); }
+.status-pending   { background: rgba(59,130,246,.12); color: #60a5fa; border: 1px solid rgba(59,130,246,.25); }
+
+/* ── Input fields ────────────────────────────────────────────────────────── */
+.glass-input {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 12px;
+  color: rgba(255,255,255,0.88);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.glass-input:focus {
+  outline: none;
+  border-color: rgba(96,165,250,0.45);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.08);
+}
+.glass-input::placeholder { color: rgba(255,255,255,0.22); }
+
+/* ── Opportunity cards ───────────────────────────────────────────────────── */
+.opp-sales { background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.2); }
+.opp-tech  { background: rgba(59,130,246,0.06);  border: 1px solid rgba(59,130,246,0.2); }
+.opp-av    { background: rgba(249,115,22,0.06);  border: 1px solid rgba(249,115,22,0.2); }
