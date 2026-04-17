@@ -23,3 +23,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python virtualenvs y cache
+__pycache__/
+*.pyc
+*.pyo
+agent_runner/.venv/
+LeadUp/backend/.venv/
+
+# Credenciales sensibles
+credenciales/
+.env.*
+!*.env.example

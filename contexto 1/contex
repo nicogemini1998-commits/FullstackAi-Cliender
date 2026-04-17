@@ -1,0 +1,223 @@
+SISTEMA DE AGENTES CONECTADOS
+QUÉ ES ESTE SISTEMA
+Estás construyendo el backend de un canvas infinito de agentes IA. Cada nodo del canvas es un agente Claude independiente con su propia terminal. Los nodos se conectan entre sí mediante un sistema de mensajería interno, donde el output de un agente es el input del siguiente, creando flujos de trabajo encadenados — exactamente como n8n pero ejecutado en nuestro propio servidor y completamente personalizable.
+
+ARQUITECTURA DEL SISTEMA
+
+CANVAS (Frontend)
+     │
+     ├── Nodo Terminal A (Agente Claude 1)
+     │        │  output →
+     ├── Nodo Terminal B (Agente Claude 2)
+     │        │  output →
+     ├── Nodo Terminal C (Agente Claude 3)
+     │        │  output →
+     └── Nodo Texto / Resultado final
+
+Cada nodo se comunica a través del backend via WebSockets
+El estado de cada flujo se guarda en PostgreSQL
+
+
+STACK TÉCNICO
+	•	Backend: Python + FastAPI + WebSockets
+	•	Base de datos: PostgreSQL (flujos, nodos, mensajes, historial)
+	•	Cola de mensajes: Redis + RQ (para encolar tareas entre agentes)
+	•	Frontend canvas: React + React Flow (librería específica para canvas con nodos conectables)
+	•	Agentes: Anthropic Claude API (cada nodo tiene su propio system prompt)
+	•	Auth: JWT igual que el CRM
+
+ESTRUCTURA DE CARPETAS
+
+/agent-canvas/
+├── backend/
+│   ├── main.py
+│   ├── websocket_manager.py     # Gestiona conexiones WS por nodo
+│   ├── models/
+│   │   ├── flow.py              # Modelo flujo completo
+│   │   ├── node.py              # Modelo nodo individual
+│   │   └── message.py          # Mensajes entre nodos
+│   ├── services/
+│   │   ├── agent_service.py     # Llama a Claude API por nodo
+│   │   ├── flow_runner.py       # Ejecuta el flujo nodo a nodo
+│   │   └── redis_queue.py      # Cola de tareas
+│   └── routers/
+│       ├── flows.py             # CRUD flujos
+│       ├── nodes.py             # CRUD nodos
+│       └── execute.py          # Lanzar ejecución
+├── frontend/
+│   └── src/
+│       ├── components/
+│       │   ├── FlowCanvas.jsx   # Canvas principal (React Flow)
+│       │   ├── AgentNode.jsx    # Nodo agente con terminal
+│       │   ├── TerminalView.jsx # Output en tiempo real
+│       │   └── NodeConfig.jsx  # Configurar system prompt del nodo
+│       └── App.jsx
+
+
+BASE DE DATOS — ESQUEMA
+
+-- Flujos de trabajo
+CREATE TABLE flows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(255),
+  description TEXT,
+  status VARCHAR(20),  -- 'idle' / 'running' / 'completed' / 'error'
+  created_by UUID,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Nodos individuales
+CREATE TABLE nodes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  flow_id UUID REFERENCES flows(id),
+  node_type VARCHAR(50),        -- 'agent' / 'terminal' / 'text' / 'trigger'
+  label VARCHAR(100),
+  system_prompt TEXT,           -- System prompt de este agente Claude
+  position_x FLOAT,            -- Posición en el canvas
+  position_y FLOAT,
+  config JSONB                  -- Config extra (modelo, temperatura, etc.)
+);
+
+-- Conexiones entre nodos
+CREATE TABLE edges (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  flow_id UUID REFERENCES flows(id),
+  source_node_id UUID REFERENCES nodes(id),
+  target_node_id UUID REFERENCES nodes(id)
+);
+
+-- Mensajes/outputs entre nodos
+CREATE TABLE messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  flow_run_id UUID,             -- ID de ejecución del flujo
+  source_node_id UUID REFERENCES nodes(id),
+  target_node_id UUID REFERENCES nodes(id),
+  content TEXT,                 -- El output del agente
+  status VARCHAR(20),           -- 'pending' / 'delivered' / 'processed'
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Historial de ejecuciones
+CREATE TABLE flow_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  flow_id UUID REFERENCES flows(id),
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP,
+  status VARCHAR(20),
+  input_data JSONB,
+  output_data JSONB
+);
+
+
+LÓGICA DEL FLOW RUNNER
+
+# flow_runner.py
+# Este es el corazón del sistema
+
+async def run_flow(flow_id, initial_input):
+    
+    # 1. Cargar todos los nodos y edges del flujo
+    nodes = get_nodes_ordered(flow_id)  # ordenados por conexiones
+    
+    # 2. Crear un flow_run en la BD
+    run_id = create_flow_run(flow_id)
+    
+    # 3. Ejecutar nodo a nodo
+    current_input = initial_input
+    
+    for node in nodes:
+        # Notificar via WebSocket que este nodo está activo
+        await ws_manager.broadcast(node.id, {"status": "running"})
+        
+        # Llamar a Claude con el system prompt del nodo + input anterior
+        output = await agent_service.run(
+            system_prompt=node.system_prompt,
+            user_message=current_input
+        )
+        
+        # Guardar mensaje en BD
+        save_message(run_id, node.id, next_node.id, output)
+        
+        # Enviar output al terminal del nodo via WebSocket (streaming)
+        await ws_manager.stream_to_node(node.id, output)
+        
+        # El output de este nodo es el input del siguiente
+        current_input = output
+    
+    # 4. Marcar flujo como completado
+    complete_flow_run(run_id, current_input)
+
+
+WEBSOCKETS — TIEMPO REAL
+
+# websocket_manager.py
+# Cada nodo tiene su propio canal WS
+# El frontend se suscribe al canal de su nodo
+# Cuando el agente produce output, se hace streaming token a token
+
+class WebSocketManager:
+    def _init_(self):
+        self.connections: dict = {}  # node_id → websocket
+    
+    async def connect(self, node_id, websocket):
+        self.connections[node_id] = websocket
+    
+    async def stream_to_node(self, node_id, text_stream):
+        # Envía token a token para efecto de terminal en tiempo real
+        ws = self.connections.get(node_id)
+        async for token in text_stream:
+            await ws.send_text(token)
+
+
+FRONTEND — NODO AGENTE (AgentNode.jsx)
+Cada nodo debe tener visualmente:
+	•	Header: nombre del agente + indicador de estado (verde pulsando = activo)
+	•	Terminal: área negra con texto que aparece en streaming, igual que una terminal real
+	•	Handle de entrada (izquierda): recibe input del nodo anterior
+	•	Handle de salida (derecha): envía output al nodo siguiente
+	•	Botón config: abre panel lateral para editar el system prompt del agente
+	•	Usar la librería React Flow para los nodos, edges y el canvas
+
+TIPOS DE NODOS A IMPLEMENTAR
+
+'trigger'   → Nodo de inicio. Recibe input manual o automático (webhook, cron)
+'agent'     → Nodo Claude. Tiene system prompt propio, recibe y envía mensajes
+'terminal'  → Muestra output en tiempo real (solo lectura)
+'text'      → Nodo de texto estático, inyecta contexto fijo al siguiente nodo
+'condition' → Nodo condicional: si el output contiene X, va por rama A, sino rama B
+'output'    → Nodo final, guarda el resultado en BD o lo envía por webhook
+
+
+INTEGRACIÓN CON EL CRM (herramienta anterior)
+Este sistema de agentes ES el backend del CRM de llamadas. El flujo del CRM se construye así:
+
+[Trigger 8am]
+     → [Agente Apollo] (busca empresas y DMs)
+     → [Agente Apify] (scraping Google Maps)
+     → [Agente Scrapling] (analiza web empresa)
+     → [Agente Claude Analista] (genera diagnóstico digital)
+     → [Agente Claude Redactor] (formatea la ficha final en JSON)
+     → [Output] (guarda en PostgreSQL → aparece en dashboard comerciales)
+
+
+Cada uno de estos pasos es un nodo en el canvas. Se pueden modificar, reordenar o añadir nodos sin tocar código.
+
+SEGURIDAD
+	•	JWT en todos los endpoints igual que el CRM
+	•	Las API keys (Anthropic, Apollo, Apify) solo en .env, nunca expuestas al frontend
+	•	Cada flow_run queda registrado con quién lo ejecutó y cuándo
+	•	Rate limiting en el endpoint de ejecución (máximo 10 ejecuciones/minuto)
+	•	Sanitizar todos los system prompts antes de enviarlos a Claude (evitar prompt injection)
+	•	Redis con contraseña, no expuesto públicamente
+
+ORDEN DE CONSTRUCCIÓN
+	1.	PostgreSQL — tablas flows, nodes, edges, messages, flow_runs
+	2.	FastAPI — CRUD flows y nodes
+	3.	Redis + RQ — cola de mensajes entre nodos
+	4.	flow_runner.py — lógica de ejecución encadenada
+	5.	WebSocket manager — streaming token a token por nodo
+	6.	agent_service.py — wrapper Claude API por nodo
+	7.	Frontend React Flow — canvas con nodos arrastrables y conectables
+	8.	AgentNode.jsx — terminal con streaming en tiempo real
+	9.	Integrar con el CRM (flujo 8am)
+	10.	Deploy en VPS junto al CRM bajo el mismo subdominio

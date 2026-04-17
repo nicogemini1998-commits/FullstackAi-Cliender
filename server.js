@@ -96,120 +96,239 @@ app.get('/api/users', requireAuth, async (req, res) => {
 })
 
 // ─── PLANTILLAS ───────────────────────────────────────────────────────────────
-app.get('/api/templates',    requireAuth, async (req, res) => {
+// ─── PLANTILLAS ───────────────────────────────────────────────────────────────
+// GET: propias + globales (admin). Incluye flag is_global + can_edit
+app.get('/api/templates', requireAuth, async (req, res) => {
   if (!dbReady) return res.json([])
-  const { rows } = await db.query('SELECT id, name, nodes, edges, thumbnail, created_at, updated_at FROM templates WHERE user_id=$1 ORDER BY updated_at DESC', [req.user.id])
+  const isAdmin = req.user.role === 'admin'
+  // Globales (creadas por admins) + propias
+  const { rows } = await db.query(`
+    SELECT id, name, nodes, edges, thumbnail, created_at, updated_at,
+           is_global, user_id,
+           (user_id = $1 OR (is_global AND $2)) AS can_edit
+    FROM templates
+    WHERE user_id = $1 OR is_global = true
+    ORDER BY is_global DESC, updated_at DESC
+  `, [req.user.id, isAdmin])
   res.json(rows)
 })
-app.post('/api/templates',   requireAuth, async (req, res) => {
-  if (!dbReady) return res.status(503).json({ error: 'DB no disponible en modo local' })
-  const { name, nodes, edges } = req.body
+
+// POST: cualquier usuario crea la suya. Admin puede marcarla global
+app.post('/api/templates', requireAuth, async (req, res) => {
+  if (!dbReady) return res.status(503).json({ error: 'DB no disponible' })
+  const { name, nodes, edges, is_global } = req.body
   if (!name) return res.status(400).json({ error: 'Nombre requerido' })
-  const { rows } = await db.query('INSERT INTO templates(user_id,name,nodes,edges) VALUES($1,$2,$3,$4) RETURNING *', [req.user.id, name, JSON.stringify(nodes||[]), JSON.stringify(edges||[])])
+  const global = req.user.role === 'admin' ? !!is_global : false
+  const { rows } = await db.query(
+    'INSERT INTO templates(user_id,name,nodes,edges,is_global) VALUES($1,$2,$3,$4,$5) RETURNING *',
+    [req.user.id, name, JSON.stringify(nodes||[]), JSON.stringify(edges||[]), global]
+  )
   res.json(rows[0])
 })
+
+// PUT: solo propias. Admin puede editar sus globales también
 app.put('/api/templates/:id', requireAuth, async (req, res) => {
-  if (!dbReady) return res.status(503).json({ error: 'DB no disponible en modo local' })
+  if (!dbReady) return res.status(503).json({ error: 'DB no disponible' })
   const { name, nodes, edges } = req.body
-  const { rows } = await db.query('UPDATE templates SET name=COALESCE($1,name), nodes=COALESCE($2,nodes), edges=COALESCE($3,edges) WHERE id=$4 AND user_id=$5 RETURNING *', [name, nodes?JSON.stringify(nodes):null, edges?JSON.stringify(edges):null, req.params.id, req.user.id])
-  if (!rows.length) return res.status(404).json({ error: 'No encontrada' })
+  const isAdmin = req.user.role === 'admin'
+  // Admin edita sus propias. Usuario solo las suyas (no globales)
+  const { rows } = await db.query(`
+    UPDATE templates SET
+      name  = COALESCE($1, name),
+      nodes = COALESCE($2, nodes),
+      edges = COALESCE($3, edges)
+    WHERE id = $4
+      AND user_id = $5
+      AND (is_global = false OR $6)
+    RETURNING *
+  `, [name, nodes?JSON.stringify(nodes):null, edges?JSON.stringify(edges):null, req.params.id, req.user.id, isAdmin])
+  if (!rows.length) return res.status(403).json({ error: 'Sin permisos o no encontrada' })
   res.json(rows[0])
 })
+
+// DELETE: solo propias. Admin puede borrar sus globales
 app.delete('/api/templates/:id', requireAuth, async (req, res) => {
   if (!dbReady) return res.json({ ok: true })
-  await db.query('DELETE FROM templates WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id])
+  const isAdmin = req.user.role === 'admin'
+  const { rowCount } = await db.query(
+    'DELETE FROM templates WHERE id=$1 AND user_id=$2 AND (is_global=false OR $3)',
+    [req.params.id, req.user.id, isAdmin]
+  )
+  if (!rowCount) return res.status(403).json({ error: 'Sin permisos' })
   res.json({ ok: true })
 })
 
 // ─── ESTILOS ──────────────────────────────────────────────────────────────────
-app.get('/api/styles',    requireAuth, async (req, res) => {
+app.get('/api/styles', requireAuth, async (req, res) => {
   if (!dbReady) return res.json([])
-  const { rows } = await db.query('SELECT id, name, images, created_at FROM styles WHERE user_id=$1 ORDER BY name', [req.user.id])
+  const isAdmin = req.user.role === 'admin'
+  const { rows } = await db.query(`
+    SELECT id, name, images, created_at, is_global, user_id,
+           (user_id = $1 OR (is_global AND $2)) AS can_edit
+    FROM styles
+    WHERE user_id = $1 OR is_global = true
+    ORDER BY is_global DESC, name ASC
+  `, [req.user.id, isAdmin])
   res.json(rows)
 })
-app.post('/api/styles',   requireAuth, async (req, res) => {
-  if (!dbReady) return res.status(503).json({ error: 'DB no disponible en modo local' })
-  const { name, images } = req.body
+
+app.post('/api/styles', requireAuth, async (req, res) => {
+  if (!dbReady) return res.status(503).json({ error: 'DB no disponible' })
+  const { name, images, is_global } = req.body
   if (!name) return res.status(400).json({ error: 'Nombre requerido' })
-  const { rows } = await db.query('INSERT INTO styles(user_id,name,images) VALUES($1,$2,$3) RETURNING *', [req.user.id, name, JSON.stringify(images||[])])
+  const global = req.user.role === 'admin' ? !!is_global : false
+  const { rows } = await db.query(
+    'INSERT INTO styles(user_id,name,images,is_global) VALUES($1,$2,$3,$4) RETURNING *',
+    [req.user.id, name, JSON.stringify(images||[]), global]
+  )
   res.json(rows[0])
 })
+
 app.put('/api/styles/:id', requireAuth, async (req, res) => {
-  if (!dbReady) return res.status(503).json({ error: 'DB no disponible en modo local' })
+  if (!dbReady) return res.status(503).json({ error: 'DB no disponible' })
   const { name, images } = req.body
-  const { rows } = await db.query('UPDATE styles SET name=COALESCE($1,name), images=COALESCE($2,images) WHERE id=$3 AND user_id=$4 RETURNING *', [name, images?JSON.stringify(images):null, req.params.id, req.user.id])
-  if (!rows.length) return res.status(404).json({ error: 'No encontrado' })
+  const isAdmin = req.user.role === 'admin'
+  const { rows } = await db.query(`
+    UPDATE styles SET
+      name   = COALESCE($1, name),
+      images = COALESCE($2, images)
+    WHERE id = $3
+      AND user_id = $4
+      AND (is_global = false OR $5)
+    RETURNING *
+  `, [name, images?JSON.stringify(images):null, req.params.id, req.user.id, isAdmin])
+  if (!rows.length) return res.status(403).json({ error: 'Sin permisos o no encontrado' })
   res.json(rows[0])
 })
+
 app.delete('/api/styles/:id', requireAuth, async (req, res) => {
   if (!dbReady) return res.json({ ok: true })
-  await db.query('DELETE FROM styles WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id])
+  const isAdmin = req.user.role === 'admin'
+  const { rowCount } = await db.query(
+    'DELETE FROM styles WHERE id=$1 AND user_id=$2 AND (is_global=false OR $3)',
+    [req.params.id, req.user.id, isAdmin]
+  )
+  if (!rowCount) return res.status(403).json({ error: 'Sin permisos' })
   res.json({ ok: true })
 })
 
 // ─── Mapeo de parámetros por modelo ───────────────────────────────────────────
-function buildInput(model, { prompt, aspectRatio, resolution, duration, refImages = [], refAudios = [], extra = {} }) {
+function buildInput(model, { prompt, aspectRatio, resolution, duration, refImages = [], refVideos = [], refAudios = [], extra = {} }) {
   const imgs = refImages.filter(Boolean)
+  const vids = refVideos.filter(Boolean)
   const auds = refAudios.filter(Boolean)
 
+  // ── Imágenes ──────────────────────────────────────────────────────────────
+
   if (model === 'flux-2/pro-text-to-image' || model === 'flux-2/flex-text-to-image') {
-    return { prompt, aspect_ratio: aspectRatio || '1:1', resolution: resolution || '1K' }
-  }
-  if (model === 'ideogram/v3-text-to-image') {
-    const sizes = { '1:1': 'square_hd', '4:3': 'landscape_4_3', '3:4': 'portrait_4_3', '16:9': 'landscape_16_9', '9:16': 'portrait_16_9' }
-    return { prompt, image_size: sizes[aspectRatio] || 'square_hd', rendering_speed: 'BALANCED', expand_prompt: true }
-  }
-  if (model === 'grok-imagine/text-to-image') return { prompt }
-  if (model === 'qwen/text-to-image') {
-    const sizes = { '1:1': 'square_hd', '4:3': 'landscape_4_3', '16:9': 'landscape_16_9', '9:16': 'portrait_16_9' }
-    return { prompt, image_size: sizes[aspectRatio] || 'square_hd', num_inference_steps: 30 }
-  }
-  if (model === 'nano-banana-2') {
-    return { prompt, aspect_ratio: aspectRatio || '1:1', resolution: resolution || '1K' }
-  }
-  if (model === 'nano-banana-pro') {
     const input = { prompt, aspect_ratio: aspectRatio || '1:1', resolution: resolution || '1K' }
-    if (imgs.length) input.image_input = imgs
+    if (imgs.length) input.image_url = imgs[0]          // Flux: imagen de referencia única
     return input
   }
 
-  // ── Videos ──
+  if (model === 'ideogram/v3-text-to-image') {
+    const sizes = { '1:1': 'square_hd', '4:3': 'landscape_4_3', '3:4': 'portrait_4_3', '16:9': 'landscape_16_9', '9:16': 'portrait_16_9' }
+    const input = { prompt, image_size: sizes[aspectRatio] || 'square_hd', rendering_speed: 'BALANCED', expand_prompt: true }
+    if (imgs.length) input.image_url = imgs[0]          // Ideogram: imagen de referencia
+    return input
+  }
+
+  if (model === 'grok-imagine/text-to-image') {
+    const input = { prompt }
+    if (imgs.length) input.image_url = imgs[0]          // Grok: imagen de referencia
+    return input
+  }
+
+  if (model === 'qwen/text-to-image') {
+    const sizes = { '1:1': 'square_hd', '4:3': 'landscape_4_3', '16:9': 'landscape_16_9', '9:16': 'portrait_16_9' }
+    const input = { prompt, image_size: sizes[aspectRatio] || 'square_hd', num_inference_steps: 30 }
+    if (imgs.length) input.image_url = imgs[0]          // Qwen: imagen de referencia
+    return input
+  }
+
+  if (model === 'nano-banana-2') {
+    const input = { prompt, aspect_ratio: aspectRatio || '1:1', resolution: resolution || '1K' }
+    if (imgs.length) input.image_url = imgs[0]          // Nano Banana 2: imagen de referencia
+    return input
+  }
+
+  if (model === 'nano-banana-pro') {
+    const input = { prompt, aspect_ratio: aspectRatio || '1:1', resolution: resolution || '1K' }
+    if (imgs.length) input.image_input = imgs           // Nano Banana Pro: múltiples imágenes
+    return input
+  }
+
+  // ── Videos ────────────────────────────────────────────────────────────────
+
   if (model === 'kling-2.6/text-to-video') {
-    // Si hay imagen de referencia → cambiar a image-to-video
     if (imgs.length) {
+      // i2v mode: imagen → video
       return { prompt, image_urls: imgs.slice(0, 1), sound: false, duration: String(duration || 5) }
     }
     return { prompt, aspect_ratio: aspectRatio || '16:9', duration: Number(duration) || 5, sound: false }
   }
+
   if (model === 'wan/2-7-text-to-video') {
-    return { prompt, ratio: aspectRatio || '16:9', resolution: '1080p', duration: Number(duration) || 5, prompt_extend: true }
+    const input = { prompt, ratio: aspectRatio || '16:9', resolution: '1080p', duration: Number(duration) || 5, prompt_extend: true }
+    if (imgs.length) input.image_url = imgs[0]          // WAN: primer fotograma de referencia
+    if (vids.length) input.video_url = vids[0]          // WAN: vídeo de referencia
+    return input
   }
+
   if (model === 'sora-2-text-to-video') {
     const map = { '16:9': 'landscape', '9:16': 'portrait' }
-    return { prompt, aspect_ratio: map[aspectRatio] || 'landscape', n_frames: 10 }
+    const input = { prompt, aspect_ratio: map[aspectRatio] || 'landscape', n_frames: 10 }
+    if (imgs.length) input.image_url = imgs[0]          // Sora-2: imagen de referencia
+    return input
   }
+
   if (model === 'bytedance/seedance-2' || model === 'seedance-2-krea') {
     const input = {
       prompt,
       aspect_ratio: aspectRatio || '16:9',
       duration: Number(duration) || 5,
       web_search: !!(extra?.webSearch),
-      generate_audio: !!(extra?.generateAudio),
       nsfw_checker: !!(extra?.nsfwCheck),
     }
     if (extra?.returnLastFrame) input.return_last_frame = true
-    if (imgs.length) input.reference_image_urls = imgs
-    if (auds.length) input.reference_audio_urls = auds
+
+    const hasVisual = imgs.length || vids.length  // imagen o vídeo
+    if (hasVisual) {
+      // i2v mode — requiere imagen o vídeo. Audio opcional.
+      if (imgs.length) input.reference_image_urls = imgs
+      if (vids.length) input.reference_video_urls = vids
+      if (auds.length) {
+        input.reference_audio_urls = auds
+        input.generate_audio = false
+      } else {
+        input.generate_audio = true   // KIE genera audio automáticamente
+      }
+    } else {
+      // Solo texto (o audio solo — KIE no acepta audio sin visual)
+      // Audio sin imagen/vídeo → ignorar audio, solo text-to-video
+      input.generate_audio = !!(extra?.generateAudio)
+    }
     return input
   }
 
-  return { prompt }
+  // Fallback genérico — pasa refs si las hay
+  const fallback = { prompt }
+  if (imgs.length) fallback.image_url = imgs[0]
+  if (vids.length) fallback.video_url = vids[0]
+  if (auds.length) fallback.audio_url = auds[0]
+  return fallback
 }
 
 // ─── KIE AI: crear tarea ───────────────────────────────────────────────────────
 app.post('/api/generate', async (req, res) => {
-  let { model, prompt, aspectRatio, resolution, duration, refImages = [], refAudios = [] } = req.body
-  const imgs = refImages.filter(Boolean)
+  let { model, prompt, aspectRatio, resolution, duration, refImages = [], refVideos = [], refAudios = [] } = req.body
+  const imgs  = refImages.filter(Boolean)
+  const vids  = refVideos.filter(Boolean)
+  const auds  = refAudios.filter(Boolean)
+  console.log(`🎬 generate → model:${model} imgs:${imgs.length} vids:${vids.length} auds:${auds.length}`)
+  if (imgs.length) console.log(`   imgURLs: ${JSON.stringify(imgs)}`)
+  if (vids.length) console.log(`   vidURLs: ${JSON.stringify(vids)}`)
+  if (auds.length) console.log(`   audURLs: ${JSON.stringify(auds)}`)
 
   try {
     // Veo3 — endpoint diferente
@@ -233,14 +352,13 @@ app.post('/api/generate', async (req, res) => {
       const json = await r.json()
       console.log('Veo3 create →', JSON.stringify(json).slice(0, 300))
       // Normalizar respuesta Veo3 al formato esperado
-      if (json.code === 200 && json.data?.taskId) {
-        return res.json(json)
-      } else if (json.data?.taskId) {
-        return res.json({ code: 200, data: { taskId: json.data.taskId }, msg: 'Task created' })
-      } else if (json.taskId) {
-        return res.json({ code: 200, data: { taskId: json.taskId }, msg: 'Task created' })
+      if (json.code !== 200 && !json.data?.taskId && !json.taskId) {
+        return res.json({ code: json.code || 422, msg: json.msg || 'Error en Veo3' })
       }
-      return res.json({ code: 500, msg: 'Respuesta inválida de Veo3' })
+      if (json.code === 200 && json.data?.taskId) return res.json(json)
+      if (json.data?.taskId) return res.json({ code: 200, data: { taskId: json.data.taskId }, msg: 'Task created' })
+      if (json.taskId)       return res.json({ code: 200, data: { taskId: json.taskId }, msg: 'Task created' })
+      return res.json({ code: 422, msg: json.msg || 'Sin taskId en respuesta Veo3' })
     }
 
     // KREA models — usa API de KREA en lugar de KIE
@@ -252,7 +370,7 @@ app.post('/api/generate', async (req, res) => {
       }
 
       const input = buildInput(model, {
-        prompt, aspectRatio, resolution, duration, refImages, refAudios,
+        prompt, aspectRatio, resolution, duration, refImages, refVideos, refAudios,
         extra: req.body.extra || {},
       })
       const modelName = model.replace('-krea', '')
@@ -275,7 +393,7 @@ app.post('/api/generate', async (req, res) => {
       : model
 
     const input = buildInput(effectiveModel === 'kling-2.6/image-to-video' ? 'kling-2.6/text-to-video' : model, {
-      prompt, aspectRatio, resolution, duration, refImages, refAudios,
+      prompt, aspectRatio, resolution, duration, refImages, refVideos, refAudios,
       extra: req.body.extra || {},
     })
 
@@ -286,15 +404,14 @@ app.post('/api/generate', async (req, res) => {
     })
     const json = await r.json()
     console.log(`KIE (${effectiveModel}) create →`, JSON.stringify(json).slice(0, 300))
-    // Normalizar respuesta de KIE al formato esperado
-    if (json.code === 200 && json.data?.taskId) {
-      return res.json(json)
-    } else if (json.data?.taskId) {
-      return res.json({ code: 200, data: { taskId: json.data.taskId }, msg: 'Task created' })
-    } else if (json.taskId) {
-      return res.json({ code: 200, data: { taskId: json.taskId }, msg: 'Task created' })
+    // Si KIE devuelve error, pasarlo directamente al frontend
+    if (json.code !== 200 && !json.data?.taskId && !json.taskId) {
+      return res.json({ code: json.code || 422, msg: json.msg || 'Error en KIE AI' })
     }
-    res.json({ code: 500, msg: 'Respuesta inválida del servidor' })
+    if (json.code === 200 && json.data?.taskId) return res.json(json)
+    if (json.data?.taskId) return res.json({ code: 200, data: { taskId: json.data.taskId }, msg: 'Task created' })
+    if (json.taskId)       return res.json({ code: 200, data: { taskId: json.taskId }, msg: 'Task created' })
+    res.json({ code: 422, msg: json.msg || 'Sin taskId en respuesta' })
   } catch (err) {
     res.status(500).json({ code: 500, msg: err.message })
   }

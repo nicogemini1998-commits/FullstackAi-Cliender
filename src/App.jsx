@@ -521,7 +521,7 @@ const TerminalNode = ({ id, data }) => {
 
   // Crear socket UNA sola vez al montar
   useEffect(() => {
-    const sock = io('http://localhost:3001', { autoConnect: false, timeout: 4000 })
+    const sock = io(SERVER || window.location.origin, { autoConnect: false, timeout: 4000 })
     sockRef.current = sock
 
     sock.on('connect', () => setStatus('connected'))
@@ -1217,7 +1217,7 @@ const ImageNode = ({ id, data }) => {
             style={{width:'100%',background:'transparent',color:'rgba(255,255,255,0.8)',
               fontSize:12,lineHeight:1.7,resize:'none',border:'none',outline:'none',
               padding:'4px 14px 10px',fontFamily:'Plus Jakarta Sans,sans-serif'}}
-            className="placeholder-white/20 nowheel nopan"/>
+            className="placeholder-white/20 nowheel nopan nodrag"/>
         </div>
 
         {err && <div style={{padding:'0 10px 8px'}}><ErrBox msg={err}/></div>}
@@ -1385,7 +1385,9 @@ const VideoNode = ({ id, data }) => {
       const r = await fetch(`${SERVER}/api/generate`,{
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ model:m.id, prompt, aspectRatio:ar, resolution:res, duration:dur,
-          refImages:kf.map(f=>f.url), refAudios:ra.map(f=>f.url),
+          refImages:kf.map(f=>f.url),
+          refVideos:rv.map(f=>f.url),
+          refAudios:ra.map(f=>f.url),
           extra:{ generateAudio:genAudio, returnLastFrame:retLast, webSearch, nsfwCheck:nsfw } }),
       })
       const json = await r.json()
@@ -1493,7 +1495,7 @@ const VideoNode = ({ id, data }) => {
             style={{width:'100%',background:'transparent',color:'rgba(255,255,255,0.8)',
               fontSize:12,lineHeight:1.7,resize:'none',border:'none',outline:'none',
               padding:'4px 14px 10px',fontFamily:'Plus Jakarta Sans,sans-serif'}}
-            className="placeholder-white/20 nowheel nopan"/>
+            className="placeholder-white/20 nowheel nopan nodrag"/>
         </div>
 
         {err && <div style={{padding:'0 10px 8px'}}><ErrBox msg={err}/></div>}
@@ -1554,10 +1556,11 @@ const VideoNode = ({ id, data }) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // ── TemplateCard
 // ══════════════════════════════════════════════════════════════════════════════
-const TemplateCard = ({ tpl, onLoad, onDelete }) => {
+const TemplateCard = ({ tpl, onLoad, onDelete, canDelete }) => {
   const [confirm, setConfirm] = useState(false)
-  const date = new Date(tpl.createdAt).toLocaleDateString('es-ES',{day:'numeric',month:'short'})
-  const counts = tpl.nodes.reduce((a,n)=>{ a[n.type]=(a[n.type]||0)+1; return a },{})
+  const date = new Date(tpl.created_at || tpl.createdAt).toLocaleDateString('es-ES',{day:'numeric',month:'short'})
+  const nodes = Array.isArray(tpl.nodes) ? tpl.nodes : []
+  const counts = nodes.reduce((a,n)=>{ a[n.type]=(a[n.type]||0)+1; return a },{})
   const dot = (color, label, count) => count ? (
     <span key={label} style={{
       display:'inline-flex',alignItems:'center',gap:3,
@@ -1572,18 +1575,42 @@ const TemplateCard = ({ tpl, onLoad, onDelete }) => {
     else { setConfirm(true); setTimeout(()=>setConfirm(false),3000) }
   }
 
+  const isGlobal = tpl.is_global
+
   return (
     <div className="tpl-card" style={{
-      background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.07)',
-      borderRadius:18,padding:'13px 14px',
+      background: isGlobal ? 'rgba(167,139,250,0.06)' : 'rgba(255,255,255,0.025)',
+      border: `1px solid ${isGlobal ? 'rgba(167,139,250,0.2)' : 'rgba(255,255,255,0.07)'}`,
+      borderRadius:16, padding:'12px 14px',
+      position:'relative', overflow:'hidden',
+      transition:`all 200ms ${SPRING}`,
     }}>
-      {/* Name + date */}
-      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:8,gap:8}}>
-        <span style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.88)',lineHeight:1.3,wordBreak:'break-word'}}>
-          {tpl.name}
-        </span>
-        <span style={{fontSize:10,color:'rgba(255,255,255,0.22)',flexShrink:0,marginTop:2}}>{date}</span>
+      {/* Pin glow top-right para globales */}
+      {isGlobal && (
+        <div style={{
+          position:'absolute',top:-18,right:-18,width:60,height:60,borderRadius:'50%',
+          background:'radial-gradient(circle,rgba(167,139,250,0.18) 0%,transparent 70%)',
+          pointerEvents:'none',
+        }}/>
+      )}
+
+      {/* Name + fecha + pin */}
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:7,gap:8}}>
+        <div style={{display:'flex',alignItems:'center',gap:6,flex:1,minWidth:0}}>
+          {isGlobal && (
+            <span style={{
+              fontSize:9,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',
+              color:'#a78bfa',background:'rgba(167,139,250,0.15)',border:'1px solid rgba(167,139,250,0.25)',
+              padding:'2px 6px',borderRadius:6,flexShrink:0,
+            }}>📌 Fija</span>
+          )}
+          <span style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.88)',lineHeight:1.3,wordBreak:'break-word'}}>
+            {tpl.name}
+          </span>
+        </div>
+        <span style={{fontSize:10,color:'rgba(255,255,255,0.2)',flexShrink:0,marginTop:2}}>{date}</span>
       </div>
+
       {/* Node type badges */}
       <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:10}}>
         {dot(C.terminal,'Terminal',counts.terminal)}
@@ -1591,12 +1618,13 @@ const TemplateCard = ({ tpl, onLoad, onDelete }) => {
         {dot(C.video,'Video',counts.video)}
         {dot(C.result,'Resultado',counts.resultImage)}
         {dot(C.image,'Galería',counts.galleryNode)}
-        {!tpl.nodes.length && <span style={{fontSize:11,color:'rgba(255,255,255,0.2)',fontStyle:'italic'}}>Canvas vacío</span>}
+        {!nodes.length && <span style={{fontSize:11,color:'rgba(255,255,255,0.2)',fontStyle:'italic'}}>Canvas vacío</span>}
       </div>
+
       {/* Actions */}
       <div style={{display:'flex',gap:5}}>
         <button onClick={()=>onLoad(tpl,true)}
-          className="glass-btn glass-btn-violet"
+          className={`glass-btn ${isGlobal?'glass-btn-violet':'glass-btn-violet'}`}
           style={{flex:1,padding:'6px 8px',fontSize:11,fontWeight:600,display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
           <FolderOpen style={{width:11,height:11}}/> Cargar
         </button>
@@ -1605,13 +1633,15 @@ const TemplateCard = ({ tpl, onLoad, onDelete }) => {
           style={{flex:1,padding:'6px 8px',fontSize:11,display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
           <Plus style={{width:11,height:11}}/> Añadir
         </button>
-        <button onClick={handleDelete}
-          className="glass-btn glass-btn-neutral"
-          style={{padding:'6px 10px',fontSize:11,color:confirm?'#f87171':'rgba(255,255,255,0.4)',
-            borderColor:confirm?'rgba(248,113,113,0.3)':undefined,
-            transition:`all 200ms ${SPRING}`}}>
-          {confirm ? '¿Seguro?' : <Trash2 style={{width:12,height:12}}/>}
-        </button>
+        {canDelete && (
+          <button onClick={handleDelete}
+            className="glass-btn glass-btn-neutral"
+            style={{padding:'6px 10px',fontSize:11,color:confirm?'#f87171':'rgba(255,255,255,0.4)',
+              borderColor:confirm?'rgba(248,113,113,0.3)':undefined,
+              transition:`all 200ms ${SPRING}`}}>
+            {confirm ? '¿Seguro?' : <Trash2 style={{width:12,height:12}}/>}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -1620,7 +1650,7 @@ const TemplateCard = ({ tpl, onLoad, onDelete }) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // ── TemplatesPanel
 // ══════════════════════════════════════════════════════════════════════════════
-const TemplatesPanel = ({ onClose, nodes, edges, setNodes, setEdges, deleteNode }) => {
+const TemplatesPanel = ({ onClose, nodes, edges, setNodes, setEdges, deleteNode, isAdmin }) => {
   const [templates, setTemplates] = useState([])
   const [name, setName]           = useState('')
   const [saved, setSaved]         = useState(false)
@@ -1633,10 +1663,10 @@ const TemplatesPanel = ({ onClose, nodes, edges, setNodes, setEdges, deleteNode 
 
   useEffect(() => { refresh().finally(() => setLoading(false)) }, [])
 
-  const handleSave = async () => {
+  const handleSave = async (global = false) => {
     const safeName = name.trim() || `Canvas ${new Date().toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'})}`
     const safeNodes = nodes.map(({ data, ...rest }) => { const { onDelete, ...safe } = data||{}; return { ...rest, data: safe } })
-    await apiFetch('/api/templates', { method:'POST', body: JSON.stringify({ name: safeName, nodes: safeNodes, edges }) })
+    await apiFetch('/api/templates', { method:'POST', body: JSON.stringify({ name: safeName, nodes: safeNodes, edges, is_global: global }) })
     setName(''); setSaved(true); setTimeout(() => setSaved(false), 2000)
     await refresh()
   }
@@ -1648,10 +1678,29 @@ const TemplatesPanel = ({ onClose, nodes, edges, setNodes, setEdges, deleteNode 
 
   const handleLoad = (tpl, replace) => { tmplLoad(tpl, setNodes, setEdges, deleteNode, replace); if (replace) onClose() }
 
+  const fixed    = templates.filter(t => t.is_global)
+  const personal = templates.filter(t => !t.is_global)
+
+  const SectionHeader = ({ label, count, color = '#a78bfa', icon }) => (
+    <div style={{
+      display:'flex',alignItems:'center',gap:7,
+      padding:'8px 4px 6px',marginBottom:4,
+    }}>
+      <span style={{fontSize:13}}>{icon}</span>
+      <span style={{fontSize:11,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',
+        color, opacity:0.9}}>{label}</span>
+      {count > 0 && (
+        <span style={{fontSize:10,fontWeight:700,color,background:`${color}18`,
+          border:`1px solid ${color}28`,padding:'1px 6px',borderRadius:999}}>{count}</span>
+      )}
+      <div style={{flex:1,height:1,background:`${color}20`,borderRadius:1}}/>
+    </div>
+  )
+
   return (
     <div className="templates-panel" style={{
       position:'fixed',top:0,right:0,bottom:0,width:300,zIndex:200,
-      background:'rgba(5,5,10,0.94)',backdropFilter:'blur(48px) saturate(1.6)',
+      background:'rgba(5,5,10,0.96)',backdropFilter:'blur(48px) saturate(1.6)',
       WebkitBackdropFilter:'blur(48px) saturate(1.6)',
       borderLeft:'1px solid rgba(255,255,255,0.08)',
       display:'flex',flexDirection:'column',
@@ -1661,7 +1710,7 @@ const TemplatesPanel = ({ onClose, nodes, edges, setNodes, setEdges, deleteNode 
       <div style={{
         padding:'16px 18px',borderBottom:'1px solid rgba(255,255,255,0.07)',
         display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,
-        background:'linear-gradient(180deg,rgba(167,139,250,0.06) 0%,transparent 100%)',
+        background:'linear-gradient(180deg,rgba(167,139,250,0.07) 0%,transparent 100%)',
       }}>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <LayoutTemplate style={{width:15,height:15,color:'#a78bfa'}}/>
@@ -1683,50 +1732,103 @@ const TemplatesPanel = ({ onClose, nodes, edges, setNodes, setEdges, deleteNode 
         </button>
       </div>
 
-      {/* Guardar actual */}
+      {/* Guardar */}
       <div style={{padding:'12px 14px',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0}}>
-        <div style={{display:'flex',gap:7,alignItems:'center'}}>
-          <input
-            value={name}
-            onChange={e=>setName(e.target.value)}
-            onKeyDown={e=>e.key==='Enter'&&handleSave()}
-            placeholder={nodes.length ? `Nombre (${nodes.length} nodo${nodes.length!==1?'s':''})` : 'Añade nodos al canvas'}
-            style={{
-              flex:1,background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.8)',
-              fontSize:12,borderRadius:12,padding:'8px 12px',
-              border:'1px solid rgba(255,255,255,0.08)',outline:'none',
-              fontFamily:'Plus Jakarta Sans,sans-serif',
-              transition:`border-color 200ms ${SPRING}`,
-            }}
-            onFocus={e=>e.target.style.borderColor='rgba(167,139,250,0.4)'}
-            onBlur={e=>e.target.style.borderColor='rgba(255,255,255,0.08)'}
-          />
-          <button onClick={handleSave} disabled={!nodes.length}
+        <input
+          value={name}
+          onChange={e=>setName(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&handleSave(false)}
+          placeholder={nodes.length ? `Nombre (${nodes.length} nodo${nodes.length!==1?'s':''})` : 'Añade nodos al canvas'}
+          style={{
+            width:'100%',boxSizing:'border-box',
+            background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.8)',
+            fontSize:12,borderRadius:10,padding:'8px 12px',marginBottom:8,
+            border:'1px solid rgba(255,255,255,0.08)',outline:'none',
+            fontFamily:'Plus Jakarta Sans,sans-serif',
+            transition:`border-color 200ms ${SPRING}`,
+          }}
+          onFocus={e=>e.target.style.borderColor='rgba(167,139,250,0.4)'}
+          onBlur={e=>e.target.style.borderColor='rgba(255,255,255,0.08)'}
+        />
+
+        {/* Botones guardar */}
+        {isAdmin ? (
+          <div style={{display:'flex',gap:6}}>
+            {/* Personal */}
+            <button onClick={()=>handleSave(false)} disabled={!nodes.length}
+              className="glass-btn glass-btn-neutral"
+              style={{flex:1,padding:'7px 8px',fontSize:11,fontWeight:600,
+                display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
+              {saved ? <Check style={{width:11,height:11}}/> : <Save style={{width:11,height:11}}/>}
+              Personal
+            </button>
+            {/* Fijar para todos */}
+            <button onClick={()=>handleSave(true)} disabled={!nodes.length}
+              className="glass-btn glass-btn-violet"
+              style={{flex:1,padding:'7px 8px',fontSize:11,fontWeight:600,
+                display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
+              <span style={{fontSize:12}}>📌</span> Fijar para todos
+            </button>
+          </div>
+        ) : (
+          <button onClick={()=>handleSave(false)} disabled={!nodes.length}
             className="glass-btn glass-btn-violet"
-            style={{padding:'8px 12px',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',gap:5,flexShrink:0}}>
-            {saved ? <Check style={{width:13,height:13}}/> : <Save style={{width:13,height:13}}/>}
-            {saved ? 'Guardado' : 'Guardar'}
+            style={{width:'100%',padding:'8px',fontSize:12,fontWeight:600,
+              display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+            {saved ? <><Check style={{width:13,height:13}}/> Guardado</> : <><Save style={{width:13,height:13}}/> Guardar plantilla</>}
           </button>
-        </div>
+        )}
       </div>
 
-      {/* Lista de plantillas */}
-      <div style={{flex:1,overflowY:'auto',padding:'10px'}}>
+      {/* Lista dividida en secciones */}
+      <div style={{flex:1,overflowY:'auto',padding:'12px 10px'}}>
         {loading ? (
           <div style={{textAlign:'center',padding:'48px 24px',color:'rgba(255,255,255,0.18)'}}>
             <Loader2 style={{width:24,height:24,opacity:0.3,margin:'0 auto 12px'}} className="animate-spin"/>
           </div>
-        ) : templates.length===0 ? (
+        ) : templates.length === 0 ? (
           <div style={{textAlign:'center',padding:'48px 24px',color:'rgba(255,255,255,0.18)'}}>
             <LayoutTemplate style={{width:36,height:36,opacity:0.15,margin:'0 auto 12px'}}/>
             <p style={{fontSize:13,lineHeight:1.5}}>Crea un canvas y guárdalo como plantilla para reutilizarlo</p>
           </div>
         ) : (
-          <div style={{display:'flex',flexDirection:'column',gap:7}}>
-            {templates.map(tpl=>(
-              <TemplateCard key={tpl.id} tpl={tpl} onLoad={handleLoad} onDelete={handleDelete}/>
-            ))}
-          </div>
+          <>
+            {/* Sección Fijadas */}
+            {fixed.length > 0 && (
+              <div style={{marginBottom:16}}>
+                <SectionHeader label="Fijadas" count={fixed.length} color="#a78bfa" icon="📌"/>
+                <div style={{display:'flex',flexDirection:'column',gap:7}}>
+                  {fixed.map(tpl => (
+                    <TemplateCard key={tpl.id} tpl={tpl} onLoad={handleLoad} onDelete={handleDelete}
+                      canDelete={isAdmin && String(tpl.user_id) === String(tpl.user_id)}/>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Sección Personal */}
+            {personal.length > 0 && (
+              <div>
+                <SectionHeader label="Mis plantillas" count={personal.length} color="#60a5fa" icon="🗂️"/>
+                <div style={{display:'flex',flexDirection:'column',gap:7}}>
+                  {personal.map(tpl => (
+                    <TemplateCard key={tpl.id} tpl={tpl} onLoad={handleLoad} onDelete={handleDelete} canDelete/>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Si solo hay fijadas y nada personal */}
+            {fixed.length > 0 && personal.length === 0 && (
+              <div style={{textAlign:'center',marginTop:16,padding:'16px',
+                background:'rgba(255,255,255,0.02)',borderRadius:12,
+                border:'1px dashed rgba(255,255,255,0.06)'}}>
+                <p style={{fontSize:11,color:'rgba(255,255,255,0.2)',lineHeight:1.5}}>
+                  Guarda tu propio canvas para verlo aquí
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1737,44 +1839,71 @@ const TemplatesPanel = ({ onClose, nodes, edges, setNodes, setEdges, deleteNode 
 // ══════════════════════════════════════════════════════════════════════════════
 // ── StylesPanel — carpetas de imágenes de referencia
 // ══════════════════════════════════════════════════════════════════════════════
-const StyleFolder = ({ folder, onAddImg, onDelImg, onDel, onSelect, isSelected }) => {
-  const [name, setName] = useState(folder.name)
+const StyleFolder = ({ folder, onAddImg, onDelImg, onDel, onSelect, isSelected, canDelete, canEdit }) => {
+  const isGlobal = folder.is_global
   return (
     <div className="tpl-card" style={{
-      background: isSelected?'rgba(96,165,250,0.06)':'rgba(255,255,255,0.025)',
-      border:`1px solid rgba(${isSelected?'96,165,250':'255,255,255'},${isSelected?'0.18':'0.07'})`,
-      borderRadius:16,overflow:'hidden',
+      background: isGlobal
+        ? (isSelected ? 'rgba(96,165,250,0.08)' : 'rgba(96,165,250,0.04)')
+        : (isSelected ? 'rgba(96,165,250,0.06)' : 'rgba(255,255,255,0.025)'),
+      border:`1px solid rgba(${isSelected?'96,165,250':'255,255,255'},${isGlobal?'0.18':isSelected?'0.18':'0.07'})`,
+      borderRadius:16, overflow:'hidden',
+      position:'relative',
       transition:`all 200ms ${SPRING}`,
     }}>
-      {/* Folder header */}
+      {/* Glow fijado */}
+      {isGlobal && (
+        <div style={{
+          position:'absolute',top:-20,right:-20,width:70,height:70,borderRadius:'50%',
+          background:'radial-gradient(circle,rgba(96,165,250,0.15) 0%,transparent 70%)',
+          pointerEvents:'none',
+        }}/>
+      )}
+
+      {/* Header */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 12px 8px'}}>
-        <div style={{display:'flex',alignItems:'center',gap:7}}>
-          <span style={{fontSize:14}}>📁</span>
-          <span style={{fontSize:12,fontWeight:600,color:'rgba(255,255,255,0.8)'}}>{folder.name}</span>
-          <span style={{fontSize:10,color:'rgba(255,255,255,0.25)'}}>({folder.images.length})</span>
+        <div style={{display:'flex',alignItems:'center',gap:6,flex:1,minWidth:0}}>
+          {isGlobal
+            ? <span style={{fontSize:9,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',
+                color:'#60a5fa',background:'rgba(96,165,250,0.15)',border:'1px solid rgba(96,165,250,0.25)',
+                padding:'2px 6px',borderRadius:6,flexShrink:0}}>📌 Fijo</span>
+            : <span style={{fontSize:14,flexShrink:0}}>📁</span>
+          }
+          <span style={{fontSize:12,fontWeight:600,color:'rgba(255,255,255,0.85)',
+            overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{folder.name}</span>
+          <span style={{fontSize:10,color:'rgba(255,255,255,0.25)',flexShrink:0}}>({(folder.images||[]).length})</span>
         </div>
-        <button onClick={onDel}
-          style={{width:18,height:18,borderRadius:'50%',background:'rgba(255,255,255,0.05)',
-            border:'none',cursor:'pointer',color:'rgba(255,255,255,0.3)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <X style={{width:9,height:9}}/>
-        </button>
+        {canDelete && (
+          <button onClick={onDel}
+            style={{width:18,height:18,borderRadius:'50%',background:'rgba(255,255,255,0.05)',
+              border:'none',cursor:'pointer',color:'rgba(255,255,255,0.3)',flexShrink:0,
+              display:'flex',alignItems:'center',justifyContent:'center',
+              transition:`all 150ms ${SPRING}`}}
+            onMouseEnter={e=>{e.currentTarget.style.background='rgba(239,68,68,0.2)';e.currentTarget.style.color='#f87171'}}
+            onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.05)';e.currentTarget.style.color='rgba(255,255,255,0.3)'}}>
+            <X style={{width:9,height:9}}/>
+          </button>
+        )}
       </div>
+
       {/* Images grid */}
       <div style={{padding:'0 10px 10px',display:'flex',flexWrap:'wrap',gap:4}}>
-        {folder.images.map((img,i)=>(
+        {(folder.images||[]).map((img,i)=>(
           <div key={i} className="group" style={{position:'relative',width:40,height:40,flexShrink:0}}>
             <img src={img.url} style={{width:'100%',height:'100%',borderRadius:7,objectFit:'cover',border:'1px solid rgba(255,255,255,0.08)'}}/>
-            <button onClick={()=>onDelImg(i)}
-              style={{position:'absolute',top:-3,right:-3,width:13,height:13,borderRadius:'50%',
-                background:'#ef4444',border:'none',cursor:'pointer',display:'none',alignItems:'center',justifyContent:'center'}}
-              className="group-hover:!flex">
-              <X style={{width:8,height:8,color:'white'}}/>
-            </button>
+            {canEdit && (
+              <button onClick={()=>onDelImg(i)}
+                style={{position:'absolute',top:-3,right:-3,width:13,height:13,borderRadius:'50%',
+                  background:'#ef4444',border:'none',cursor:'pointer',display:'none',alignItems:'center',justifyContent:'center'}}
+                className="group-hover:!flex">
+                <X style={{width:8,height:8,color:'white'}}/>
+              </button>
+            )}
           </div>
         ))}
-        {/* Add image */}
-        <StyleAddBtn folderId={folder.id} onAdd={onAddImg}/>
+        {canEdit && <StyleAddBtn folderId={folder.id} onAdd={onAddImg}/>}
       </div>
+
       {/* Apply button */}
       <div style={{padding:'0 10px 10px'}}>
         <button onClick={onSelect}
@@ -1809,8 +1938,8 @@ const StyleAddBtn = ({ folderId, onAdd }) => {
   )
 }
 
-const StylesPanel = ({ onClose, onSelectStyle, selectedStyleId }) => {
-  const [styles, setStyles] = useState([])
+const StylesPanel = ({ onClose, onSelectStyle, selectedStyleId, isAdmin }) => {
+  const [styles, setStyles]   = useState([])
   const [newName, setNewName] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -1821,10 +1950,9 @@ const StylesPanel = ({ onClose, onSelectStyle, selectedStyleId }) => {
 
   useEffect(() => { refresh().finally(() => setLoading(false)) }, [])
 
-  const createFolder = async () => {
-    if (!newName.trim() && styles.length > 0) return
+  const createFolder = async (global = false) => {
     const name = newName.trim() || `Estilo ${styles.length + 1}`
-    await apiFetch('/api/styles', { method:'POST', body: JSON.stringify({ name, images:[] }) })
+    await apiFetch('/api/styles', { method:'POST', body: JSON.stringify({ name, images:[], is_global: global }) })
     setNewName(''); await refresh()
   }
 
@@ -1850,10 +1978,25 @@ const StylesPanel = ({ onClose, onSelectStyle, selectedStyleId }) => {
     await refresh()
   }
 
+  const fixed    = styles.filter(s => s.is_global)
+  const personal = styles.filter(s => !s.is_global)
+
+  const SectionHeader = ({ label, count, color, icon }) => (
+    <div style={{display:'flex',alignItems:'center',gap:7,padding:'8px 4px 6px',marginBottom:4}}>
+      <span style={{fontSize:13}}>{icon}</span>
+      <span style={{fontSize:11,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',color,opacity:0.9}}>{label}</span>
+      {count > 0 && (
+        <span style={{fontSize:10,fontWeight:700,color,background:`${color}18`,
+          border:`1px solid ${color}28`,padding:'1px 6px',borderRadius:999}}>{count}</span>
+      )}
+      <div style={{flex:1,height:1,background:`${color}20`,borderRadius:1}}/>
+    </div>
+  )
+
   return (
     <div className="templates-panel" style={{
       position:'fixed',top:0,right:0,bottom:0,width:300,zIndex:200,
-      background:'rgba(5,5,10,0.94)',backdropFilter:'blur(48px) saturate(1.6)',
+      background:'rgba(5,5,10,0.96)',backdropFilter:'blur(48px) saturate(1.6)',
       WebkitBackdropFilter:'blur(48px) saturate(1.6)',
       borderLeft:'1px solid rgba(255,255,255,0.08)',
       display:'flex',flexDirection:'column',
@@ -1862,7 +2005,7 @@ const StylesPanel = ({ onClose, onSelectStyle, selectedStyleId }) => {
       {/* Header */}
       <div style={{padding:'16px 18px',borderBottom:'1px solid rgba(255,255,255,0.07)',
         display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,
-        background:'linear-gradient(180deg,rgba(96,165,250,0.06) 0%,transparent 100%)'}}>
+        background:'linear-gradient(180deg,rgba(96,165,250,0.07) 0%,transparent 100%)'}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <Palette style={{width:15,height:15,color:C.image}}/>
           <span style={{fontSize:14,fontWeight:700,color:'rgba(255,255,255,0.9)',letterSpacing:'-0.02em'}}>Estilos</span>
@@ -1878,47 +2021,98 @@ const StylesPanel = ({ onClose, onSelectStyle, selectedStyleId }) => {
         </button>
       </div>
 
-      {/* Nueva carpeta */}
-      <div style={{padding:'12px 14px',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0,display:'flex',gap:7}}>
+      {/* Crear estilo */}
+      <div style={{padding:'12px 14px',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0}}>
         <input value={newName} onChange={e=>setNewName(e.target.value)}
-          onKeyDown={e=>e.key==='Enter'&&createFolder()}
+          onKeyDown={e=>e.key==='Enter'&&createFolder(false)}
           placeholder="Nombre del estilo…"
-          style={{flex:1,background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.8)',fontSize:12,
-            borderRadius:12,padding:'8px 12px',border:'1px solid rgba(255,255,255,0.08)',outline:'none',
+          style={{width:'100%',boxSizing:'border-box',
+            background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.8)',fontSize:12,
+            borderRadius:10,padding:'8px 12px',marginBottom:8,
+            border:'1px solid rgba(255,255,255,0.08)',outline:'none',
             fontFamily:'Plus Jakarta Sans,sans-serif',transition:`border-color 200ms ${SPRING}`}}
           onFocus={e=>e.target.style.borderColor='rgba(96,165,250,0.4)'}
           onBlur={e=>e.target.style.borderColor='rgba(255,255,255,0.08)'}/>
-        <button onClick={createFolder} className="glass-btn glass-btn-blue"
-          style={{padding:'8px 12px',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',gap:5,flexShrink:0}}>
-          <FolderPlus style={{width:13,height:13}}/> Crear
-        </button>
+
+        {isAdmin ? (
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={()=>createFolder(false)} className="glass-btn glass-btn-neutral"
+              style={{flex:1,padding:'7px 8px',fontSize:11,fontWeight:600,
+                display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
+              <FolderPlus style={{width:11,height:11}}/> Personal
+            </button>
+            <button onClick={()=>createFolder(true)} className="glass-btn glass-btn-blue"
+              style={{flex:1,padding:'7px 8px',fontSize:11,fontWeight:600,
+                display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
+              <span style={{fontSize:12}}>📌</span> Fijar para todos
+            </button>
+          </div>
+        ) : (
+          <button onClick={()=>createFolder(false)} className="glass-btn glass-btn-blue"
+            style={{width:'100%',padding:'8px',fontSize:12,fontWeight:600,
+              display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+            <FolderPlus style={{width:13,height:13}}/> Crear estilo
+          </button>
+        )}
       </div>
 
-      {/* Lista de carpetas */}
-      <div style={{flex:1,overflowY:'auto',padding:'10px'}}>
+      {/* Lista dividida */}
+      <div style={{flex:1,overflowY:'auto',padding:'12px 10px'}}>
         {loading ? (
           <div style={{textAlign:'center',padding:'48px 24px',color:'rgba(255,255,255,0.18)'}}>
             <Loader2 style={{width:24,height:24,opacity:0.3,margin:'0 auto 12px'}} className="animate-spin"/>
           </div>
-        ) : styles.length===0 ? (
+        ) : styles.length === 0 ? (
           <div style={{textAlign:'center',padding:'48px 24px',color:'rgba(255,255,255,0.18)'}}>
             <Palette style={{width:36,height:36,opacity:0.15,margin:'0 auto 12px'}}/>
             <p style={{fontSize:13,lineHeight:1.5}}>Crea carpetas de estilos y añade imágenes de referencia</p>
           </div>
         ) : (
-          <div style={{display:'flex',flexDirection:'column',gap:7}}>
-            {styles.map(folder=>(
-              <StyleFolder
-                key={folder.id}
-                folder={folder}
-                isSelected={selectedStyleId===folder.id}
-                onAddImg={(fid,img)=>handleAddImg(fid,img)}
-                onDelImg={i=>handleDelImg(folder.id,i)}
-                onDel={()=>handleDel(folder.id)}
-                onSelect={()=>onSelectStyle(selectedStyleId===folder.id?null:folder.id)}
-              />
-            ))}
-          </div>
+          <>
+            {fixed.length > 0 && (
+              <div style={{marginBottom:16}}>
+                <SectionHeader label="Fijados" count={fixed.length} color="#60a5fa" icon="📌"/>
+                <div style={{display:'flex',flexDirection:'column',gap:7}}>
+                  {fixed.map(folder=>(
+                    <StyleFolder key={folder.id} folder={folder}
+                      isSelected={selectedStyleId===folder.id}
+                      onAddImg={(fid,img)=>handleAddImg(fid,img)}
+                      onDelImg={i=>handleDelImg(folder.id,i)}
+                      onDel={()=>handleDel(folder.id)}
+                      onSelect={()=>onSelectStyle(selectedStyleId===folder.id?null:folder.id)}
+                      canDelete={isAdmin} canEdit={isAdmin}/>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {personal.length > 0 && (
+              <div>
+                <SectionHeader label="Mis estilos" count={personal.length} color="#a78bfa" icon="🎨"/>
+                <div style={{display:'flex',flexDirection:'column',gap:7}}>
+                  {personal.map(folder=>(
+                    <StyleFolder key={folder.id} folder={folder}
+                      isSelected={selectedStyleId===folder.id}
+                      onAddImg={(fid,img)=>handleAddImg(fid,img)}
+                      onDelImg={i=>handleDelImg(folder.id,i)}
+                      onDel={()=>handleDel(folder.id)}
+                      onSelect={()=>onSelectStyle(selectedStyleId===folder.id?null:folder.id)}
+                      canDelete canEdit/>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {fixed.length > 0 && personal.length === 0 && (
+              <div style={{textAlign:'center',marginTop:16,padding:'16px',
+                background:'rgba(255,255,255,0.02)',borderRadius:12,
+                border:'1px dashed rgba(255,255,255,0.06)'}}>
+                <p style={{fontSize:11,color:'rgba(255,255,255,0.2)',lineHeight:1.5}}>
+                  Crea tu propio estilo para verlo aquí
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -2186,14 +2380,222 @@ const NoteNode = ({ id, data }) => {
           padding:'10px 12px',
           fontFamily:'Plus Jakarta Sans,sans-serif',
         }}
-        className="nowheel nopan placeholder-yellow-300/20"
+        className="nowheel nopan nodrag placeholder-yellow-300/20"
       />
     </div>
   )
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ── TextNode — editor de texto enriquecido (solo admin)
+// ══════════════════════════════════════════════════════════════════════════════
+const C_TEXT = '#60a5fa'
+
+const TextNode = ({ id, data }) => {
+  const editorRef = useRef(null)
+  const [activeFormats, setActiveFormats] = useState({})
+  const [blockType, setBlockType] = useState('p')
+  const [showBlockMenu, setShowBlockMenu] = useState(false)
+
+  const textHandles = <>
+    <Handle type="target" position={Position.Left}  style={mkHandle('left',  C_TEXT,'image')}/>
+    <Handle type="source" position={Position.Right} style={mkHandle('right', C_TEXT,'image')}/>
+  </>
+
+  const exec = (cmd, val=null) => {
+    editorRef.current?.focus()
+    document.execCommand(cmd, false, val)
+    updateFormats()
+  }
+
+  const updateFormats = () => {
+    setActiveFormats({
+      bold:      document.queryCommandState('bold'),
+      italic:    document.queryCommandState('italic'),
+      ul:        document.queryCommandState('insertUnorderedList'),
+      ol:        document.queryCommandState('insertOrderedList'),
+    })
+  }
+
+  const applyBlock = (tag) => {
+    editorRef.current?.focus()
+    if (tag === 'p')  document.execCommand('formatBlock', false, 'p')
+    if (tag === 'h1') document.execCommand('formatBlock', false, 'h1')
+    if (tag === 'h2') document.execCommand('formatBlock', false, 'h2')
+    if (tag === 'h3') document.execCommand('formatBlock', false, 'h3')
+    setBlockType(tag)
+    setShowBlockMenu(false)
+    updateFormats()
+  }
+
+  const blockLabels = { p:'Párrafo', h1:'Título 1', h2:'Título 2', h3:'Título 3' }
+
+  const FmtBtn = ({ cmd, label, active }) => (
+    <button
+      onMouseDown={e=>{ e.preventDefault(); exec(cmd) }}
+      style={{
+        width:26, height:26, borderRadius:6, border:'none', cursor:'pointer',
+        fontWeight:700, fontSize:12,
+        background: active ? `${C_TEXT}28` : 'transparent',
+        color: active ? C_TEXT : 'rgba(255,255,255,0.45)',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        transition:`all 150ms ${SPRING}`,
+        fontFamily:'Plus Jakarta Sans,sans-serif',
+      }}
+      onMouseEnter={e=>{ if(!active) e.currentTarget.style.background='rgba(255,255,255,0.07)' }}
+      onMouseLeave={e=>{ if(!active) e.currentTarget.style.background='transparent' }}>
+      {label}
+    </button>
+  )
+
+  return (
+    <Shell hex={C_TEXT} minW={320} minH={200} handles={textHandles}>
+      {/* Header */}
+      <div style={{
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        padding:'8px 10px 8px 12px',
+        borderBottom:'1px solid rgba(255,255,255,0.05)', flexShrink:0,
+      }}>
+        <div style={{display:'flex', alignItems:'center', gap:7}}>
+          <div style={{
+            width:20, height:20, borderRadius:6,
+            background:`${C_TEXT}18`, border:`1px solid ${C_TEXT}30`,
+            display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+          }}>
+            <span style={{fontSize:11, fontWeight:800, color:C_TEXT, fontFamily:'serif'}}>T</span>
+          </div>
+          <span style={{fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.75)', letterSpacing:'-0.01em'}}>
+            {data.label || 'Texto'}
+          </span>
+        </div>
+        <button onClick={()=>data?.onDelete?.()}
+          style={{width:20,height:20,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',
+            cursor:'pointer',background:'transparent',border:'none',color:'rgba(255,255,255,0.2)',transition:`all 180ms ${SPRING}`}}
+          onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.07)';e.currentTarget.style.color='rgba(255,255,255,0.8)'}}
+          onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='rgba(255,255,255,0.2)'}}>
+          <X style={{width:10,height:10}}/>
+        </button>
+      </div>
+
+      {/* Toolbar formato */}
+      <div className="nowheel nopan nodrag" style={{
+        display:'flex', alignItems:'center', gap:2,
+        padding:'5px 10px',
+        borderBottom:'1px solid rgba(255,255,255,0.05)', flexShrink:0,
+        background:'rgba(255,255,255,0.015)',
+      }}>
+        {/* Block type dropdown */}
+        <div style={{position:'relative'}}>
+          <button
+            onMouseDown={e=>{e.preventDefault(); setShowBlockMenu(v=>!v)}}
+            style={{
+              display:'flex', alignItems:'center', gap:4,
+              padding:'3px 8px', borderRadius:6, border:'none', cursor:'pointer',
+              background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.55)',
+              fontSize:11, fontWeight:500,
+              transition:`all 150ms ${SPRING}`,
+            }}>
+            {blockLabels[blockType]}
+            <ChevronDown style={{width:10,height:10,opacity:0.5}}/>
+          </button>
+          {showBlockMenu && (
+            <div style={{
+              position:'absolute', top:'calc(100% + 4px)', left:0, zIndex:100,
+              background:'rgba(10,10,18,0.98)', backdropFilter:'blur(24px)',
+              border:'1px solid rgba(255,255,255,0.1)', borderRadius:10,
+              padding:4, minWidth:120,
+              boxShadow:'0 8px 32px rgba(0,0,0,0.6)',
+            }}>
+              {Object.entries(blockLabels).map(([tag,label])=>(
+                <button key={tag}
+                  onMouseDown={e=>{e.preventDefault(); applyBlock(tag)}}
+                  style={{
+                    display:'block', width:'100%', textAlign:'left',
+                    padding:'6px 10px', borderRadius:7, border:'none', cursor:'pointer',
+                    background: blockType===tag ? `${C_TEXT}18` : 'transparent',
+                    color: blockType===tag ? C_TEXT : 'rgba(255,255,255,0.6)',
+                    fontSize:11, fontWeight: tag==='p' ? 400 : 700-(['p','h3','h2','h1'].indexOf(tag)*100),
+                    transition:`all 120ms ${SPRING}`,
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Divisor */}
+        <div style={{width:1,height:16,background:'rgba(255,255,255,0.08)',margin:'0 2px'}}/>
+
+        <FmtBtn cmd="bold"   label="B" active={activeFormats.bold}/>
+        <FmtBtn cmd="italic" label="I" active={activeFormats.italic}/>
+
+        {/* Divisor */}
+        <div style={{width:1,height:16,background:'rgba(255,255,255,0.08)',margin:'0 2px'}}/>
+
+        <FmtBtn cmd="insertUnorderedList" label="≡" active={activeFormats.ul}/>
+        <FmtBtn cmd="insertOrderedList"   label="№" active={activeFormats.ol}/>
+
+        {/* Divisor */}
+        <div style={{width:1,height:16,background:'rgba(255,255,255,0.08)',margin:'0 2px'}}/>
+
+        {/* Copiar texto plano */}
+        <button
+          onMouseDown={e=>{ e.preventDefault(); navigator.clipboard.writeText(editorRef.current?.innerText||'') }}
+          title="Copiar texto"
+          style={{
+            width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',
+            background:'transparent',color:'rgba(255,255,255,0.35)',
+            display:'flex',alignItems:'center',justifyContent:'center',
+            transition:`all 150ms ${SPRING}`,
+          }}
+          onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.07)'}
+          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+          <Check style={{width:11,height:11}}/>
+        </button>
+      </div>
+
+      {/* Editor contenteditable */}
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        className="nowheel nopan nodrag"
+        onKeyUp={updateFormats}
+        onMouseUp={updateFormats}
+        onFocus={updateFormats}
+        onClick={()=>setShowBlockMenu(false)}
+        data-placeholder='Escribe aquí tu texto…'
+        style={{
+          flex:1, padding:'12px 14px', outline:'none',
+          color:'rgba(255,255,255,0.82)', fontSize:13, lineHeight:1.7,
+          fontFamily:'Plus Jakarta Sans,sans-serif',
+          overflowY:'auto', minHeight:120,
+          caretColor: C_TEXT,
+        }}
+      />
+
+      {/* CSS inline para placeholder + headings */}
+      <style>{`
+        [data-placeholder]:empty:before {
+          content: attr(data-placeholder);
+          color: rgba(255,255,255,0.15);
+          pointer-events: none;
+        }
+        [contenteditable] h1 { font-size:18px; font-weight:700; margin:4px 0; color:rgba(255,255,255,0.9); }
+        [contenteditable] h2 { font-size:15px; font-weight:700; margin:4px 0; color:rgba(255,255,255,0.85); }
+        [contenteditable] h3 { font-size:13px; font-weight:600; margin:4px 0; color:rgba(255,255,255,0.8); }
+        [contenteditable] ul { padding-left:18px; margin:4px 0; }
+        [contenteditable] ol { padding-left:18px; margin:4px 0; }
+        [contenteditable] b, [contenteditable] strong { color:rgba(255,255,255,0.95); }
+      `}</style>
+    </Shell>
+  )
+}
+
 const nodeTypes = {
   terminal:    TerminalNode,
+  text:        TextNode,
   image:       ImageNode,
   video:       VideoNode,
   resultImage: ResultImageNode,
@@ -2230,7 +2632,8 @@ function LoginScreen({ onLogin }) {
       if (!r.ok) { setError(d.error || 'Error al iniciar sesión'); return }
       localStorage.setItem('fai_token', d.token)
       localStorage.setItem('fai_user',  d.username)
-      onLogin(d.username)
+      localStorage.setItem('fai_role',  d.role || 'user')
+      onLogin(d.username, d.role || 'user')
     } catch {
       setError('No se pudo conectar al servidor')
     } finally {
@@ -2374,6 +2777,8 @@ export default function App() {
     const user  = localStorage.getItem('fai_user')
     return (token && user) ? user : null
   })
+  const [authRole, setAuthRole] = useState(() => localStorage.getItem('fai_role') || 'user')
+  const isAdmin = authRole === 'admin'
   const rfRef = useRef(null)  // ReactFlow instance → getViewport()
   const [showTemplates, setShowTemplates] = useState(false)
   const [showStyles, setShowStyles]       = useState(false)
@@ -2471,8 +2876,7 @@ export default function App() {
       .catch(() => { /* error de red — mantener sesión */ })
   }, [])
 
-  // Dev mode — skip login
-  // if (!authUser) return <LoginScreen onLogin={u => setAuthUser(u)} />
+  if (!authUser) return <LoginScreen onLogin={(u, role) => { setAuthUser(u); setAuthRole(role) }} />
 
   return (
     <div style={{width:'100vw',height:'100vh',background:'#080810'}}>
@@ -2491,6 +2895,8 @@ export default function App() {
         panOnScroll={true}
         panOnScrollMode="vertical"
         panActivationKeyCode="Space"
+        nodeDragThreshold={8}
+        noDragClassName="nodrag"
         onWheel={e => {
           if (e.shiftKey) {
             e.preventDefault()
@@ -2524,7 +2930,10 @@ export default function App() {
       }}>
         {[
           { label:'Nota',     type:'note',       w:240, h:180, hex:C_NOTE },
-          { label:'Terminal', type:'terminal',   w:380, h:260, hex:C.terminal },
+          ...(isAdmin ? [
+            { label:'Terminal', type:'terminal', w:380, h:260, hex:C.terminal },
+            { label:'Texto',    type:'text',     w:360, h:280, hex:C_TEXT },
+          ] : []),
           { label:'Prompts',  type:'promptList', w:300, h:360, hex:C_PLIST },
           { label:'Imagen',   type:'image',      w:320, h:520, hex:C.image },
           { label:'Video',    type:'video',      w:380, h:740, hex:C.video },
@@ -2636,6 +3045,7 @@ export default function App() {
           setNodes={setNodes}
           setEdges={setEdges}
           deleteNode={deleteNode}
+          isAdmin={isAdmin}
         />
       )}
 
@@ -2655,6 +3065,7 @@ export default function App() {
             onClose={()=>setShowStyles(false)}
             onSelectStyle={id=>{ setGlobalStyleId(id) }}
             selectedStyleId={globalStyleId}
+            isAdmin={isAdmin}
           />
           <div onClick={()=>setShowStyles(false)}
             style={{position:'fixed',inset:0,zIndex:190,background:'rgba(0,0,0,0.3)',backdropFilter:'blur(2px)'}}/>

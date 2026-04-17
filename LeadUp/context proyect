@@ -1,0 +1,229 @@
+crear una herramienta CRM de llamadas en frío para un equipo comercial. Se desplegará en un VPS bajo un subdominio. El sistema genera fichas de cliente enriquecidas automáticamente cada mañana a las 8am y las presenta a los comerciales para sus llamadas.
+
+STACK TÉCNICO
+	•	Frontend: React + Vite + TailwindCSS
+	•	Backend: Python 3.11 + FastAPI
+	•	Base de datos: PostgreSQL con SQLAlchemy ORM
+	•	Autenticación: JWT tokens (login para comerciales)
+	•	Scheduler: APScheduler (cron 8am diario)
+	•	Scraping: Scrapling (Python)
+	•	APIs externas: Apollo.io API, Apify API, Anthropic Claude API
+	•	Deploy: Nginx reverse proxy + subdominio + HTTPS con Let’s Encrypt
+
+ESTRUCTURA DE CARPETAS A CREAR
+
+/cold-call-crm/
+├── backend/
+│   ├── main.py                  # FastAPI app principal
+│   ├── config.py                # Variables de entorno
+│   ├── database.py              # Conexión PostgreSQL
+│   ├── models/
+│   │   ├── company.py           # Modelo empresa
+│   │   ├── contact.py           # Modelo contacto/DM
+│   │   └── call_status.py       # Modelo estado llamada
+│   ├── routers/
+│   │   ├── companies.py         # CRUD fichas
+│   │   ├── calls.py             # Actualizar estados
+│   │   └── auth.py              # Login/JWT
+│   ├── services/
+│   │   ├── apollo_service.py    # Integración Apollo API
+│   │   ├── apify_service.py     # Integración Apify API
+│   │   ├── scraping_service.py  # Scrapling web analysis
+│   │   ├── claude_service.py    # Generación fichas con Claude
+│   │   └── scheduler.py        # Cron job 8am
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── CompanyCard.jsx  # Ficha visual del cliente
+│   │   │   ├── ContactBadge.jsx # Badge DM con teléfono/email
+│   │   │   ├── StatusBar.jsx    # Verde/Rojo/Sin contestar
+│   │   │   └── Dashboard.jsx    # Vista principal
+│   │   ├── pages/
+│   │   │   ├── Login.jsx
+│   │   │   └── Home.jsx
+│   │   └── App.jsx
+│   └── package.json
+├── nginx/
+│   └── crm.conf                 # Config subdominio
+└── .env                         # API keys (nunca en git)
+
+
+BASE DE DATOS — ESQUEMA
+
+-- Empresas
+CREATE TABLE companies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(255) NOT NULL,
+  website VARCHAR(255),
+  sector VARCHAR(100),
+  city VARCHAR(100),
+  employee_count INTEGER,
+  digital_score INTEGER,        -- Score 0-100 generado por Claude
+  gmb_rating FLOAT,             -- Reseña Google Maps
+  gmb_reviews INTEGER,
+  has_crm BOOLEAN,
+  social_facebook VARCHAR(255),
+  social_linkedin VARCHAR(255),
+  opportunity_level VARCHAR(10), -- ALTA / MEDIA / BAJA
+  opportunity_sales TEXT,
+  opportunity_tech TEXT,
+  opportunity_av TEXT,
+  raw_data JSONB,               -- Datos crudos de Apollo/Apify
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Contactos / Decision Makers
+CREATE TABLE contacts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID REFERENCES companies(id),
+  name VARCHAR(255),
+  role VARCHAR(100),
+  email VARCHAR(255),
+  phone_mobile VARCHAR(50),
+  phone_verified BOOLEAN DEFAULT FALSE,
+  phone_source VARCHAR(50),     -- 'apollo' / 'manual' / 'apify'
+  linkedin_url VARCHAR(255),
+  is_primary BOOLEAN DEFAULT FALSE
+);
+
+-- Estados de llamada
+CREATE TABLE call_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_id UUID REFERENCES contacts(id),
+  company_id UUID REFERENCES companies(id),
+  commercial_id UUID,           -- Qué comercial hizo la llamada
+  status VARCHAR(20),           -- 'closed' / 'rejected' / 'no_answer'
+  notes TEXT,
+  called_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Usuarios / Comerciales
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(100),
+  email VARCHAR(100) UNIQUE,
+  password_hash VARCHAR(255),
+  role VARCHAR(20) DEFAULT 'commercial'
+);
+
+
+FLUJO DE ENRIQUECIMIENTO (scheduler 8am)
+Paso 1 — Apollo API
+
+# apollo_service.py
+# Llamar a: POST https://api.apollo.io/api/v1/mixed_people/search
+# Parámetros: sector objetivo, país España, cargo = CEO/Director/Fundador
+# Extraer: nombre, cargo, email, teléfono, empresa, LinkedIn URL
+
+
+Paso 2 — Apify API
+
+# apify_service.py
+# Actor: compass/google-maps-scraper
+# Input: nombre empresa + ciudad
+# Extraer: rating, número reseñas, teléfono GMB, categoría
+
+
+Paso 3 — Scrapling
+
+# scraping_service.py
+# Visitar website de la empresa
+# Detectar: ¿tiene CRM embebido? (HubSpot, Salesforce scripts)
+# Detectar: ¿tiene pixel de Facebook/Google Ads?
+# Detectar: calidad SEO básica (meta tags, velocidad)
+# Extraer: enlaces RRSS del footer/header
+
+
+Paso 4 — Claude API
+
+# claude_service.py
+# Enviar a Claude todos los datos anteriores
+# Prompt estructura:
+"""
+Eres un analista de negocio digital. Con estos datos de la empresa:
+{datos_apollo} {datos_apify} {datos_scrapling}
+
+Genera un JSON con:
+- digital_score: número 0-100
+- opportunity_level: ALTA/MEDIA/BAJA
+- opportunity_sales: 2-3 bullets de oportunidad comercial
+- opportunity_tech: 2-3 bullets de oportunidad tecnológica  
+- opportunity_av: 2-3 bullets de oportunidad audiovisual
+- summary: 2 frases sobre el negocio para el comercial
+Responde SOLO con JSON válido.
+"""
+
+
+API ENDPOINTS A CREAR
+
+POST   /auth/login              → Devuelve JWT
+GET    /companies               → Lista fichas del día (paginada)
+GET    /companies/{id}          → Ficha completa
+PATCH  /companies/{id}/status   → Actualizar estado llamada
+        body: { status: "closed" | "rejected" | "no_answer", notes: "" }
+GET    /companies/stats         → Stats del día (cerrados/rechazados/pendientes)
+POST   /admin/trigger-enrichment → Lanzar enriquecimiento manual (admin)
+
+
+DISEÑO DE LA FICHA (CompanyCard.jsx)
+Replicar exactamente esta estructura visual:
+	•	Header oscuro (azul marino): nombre empresa, ciudad, nº profesionales, web, sectores
+	•	Barra de métricas (4 KPIs): Profesionales / Score Madurez / CRM / Nº DMs
+	•	Texto resumen de 2-3 frases
+	•	Tabla Decision Makers: 3 columnas — Contacto principal (destacado con teléfono en verde) + 2 decisores secundarios
+	•	Tabla Ecosistema Digital: filas con: Presencia web, RRSS, CRM, Captación leads, Email marketing, Video, SEO, Oportunidad
+	•	3 cards de Oportunidades: Sales/CRM (verde), Tech/IA (azul), Contenido AV (naranja)
+	•	Footer: nombre empresa + numeración ficha
+
+SEGURIDAD — OBLIGATORIO
+
+# config.py — todas las keys en .env, nunca hardcodeadas
+APOLLO_API_KEY=
+APIFY_API_KEY=
+ANTHROPIC_API_KEY=
+DATABASE_URL=postgresql://user:pass@localhost/crmdb
+JWT_SECRET=string_aleatorio_64_chars
+JWT_EXPIRY=8h  # Sesión de un día de trabajo
+
+# Rate limiting en FastAPI
+from slowapi import Limiter
+limiter = Limiter(key_func=get_remote_address)
+# Máximo 100 req/minuto por IP
+
+# CORS solo para tu subdominio
+origins = ["https://crm.tudominio.com"]
+
+# Passwords con bcrypt
+# Inputs sanitizados contra SQL injection (SQLAlchemy ORM lo hace)
+# HTTPS obligatorio (Let's Encrypt en Nginx)
+
+
+NGINX CONFIG
+
+server {
+    server_name crm.tudominio.com;
+    
+    location /api {
+        proxy_pass http://127.0.0.1:8000;
+    }
+    
+    location / {
+        root /var/www/crm/dist;
+        try_files $uri /index.html;
+    }
+    
+    listen 443 ssl;
+    # certificados Let's Encrypt aquí
+}
+
+
+ORDEN DE CONSTRUCCIÓN
+	1.	Base de datos PostgreSQL + modelos SQLAlchemy
+	2.	FastAPI con endpoints básicos + auth JWT
+	3.	Apollo service + Apify service (con datos reales)
+	4.	Scrapling service (análisis web)
+	5.	Claude service (generación fichas)
+	6.	Scheduler APScheduler (8am cron)
+	7.	Frontend React — Dashboard + CompanyCard
+	8.	Deploy Nginx + HTTPS
