@@ -10,6 +10,14 @@ from ..services.agent_service import stream_agent, run_agent
 from ..services.redis_queue import NodeQueue, publish_run_event
 from ..services.apollo_service import search_leads
 from ..services.scraping_service import analyze_website
+from ..services.apify_service import enrich_companies_with_gmb
+
+
+def _safe_uuid(v: Optional[str]):
+    try:
+        return uuid.UUID(v) if v else None
+    except (ValueError, AttributeError):
+        return None
 
 
 def _parse_input_params(text: str) -> dict:
@@ -46,7 +54,7 @@ async def _create_run(flow_id: str, started_by: str, input_data: dict) -> str:
             RETURNING id
             """,
             uuid.UUID(flow_id),
-            uuid.UUID(started_by) if started_by else None,
+            _safe_uuid(started_by),
             input_data,
         )
     return str(row["id"])
@@ -140,6 +148,23 @@ async def run_flow(
                 output = json.dumps(leads, ensure_ascii=False)
                 preview = f"✅ Apollo: {len(leads)} empresas encontradas\n{output[:300]}..."
                 await ws_manager.send_to_node(node_id, {"type": "token", "data": preview})
+                await ws_manager.send_to_node(node_id, {"type": "done"})
+
+            elif node_type == "apify_agent":
+                try:
+                    companies = json.loads(current_input)
+                except (json.JSONDecodeError, ValueError):
+                    companies = []
+                await ws_manager.send_to_node(node_id, {
+                    "type": "token",
+                    "data": f"📍 Buscando en Google Maps {len(companies)} empresas...",
+                })
+                enriched = await enrich_companies_with_gmb(companies)
+                output = json.dumps(enriched, ensure_ascii=False)
+                await ws_manager.send_to_node(node_id, {
+                    "type": "token",
+                    "data": f"\n✅ Apify: GMB data añadida a {len(enriched)} empresas",
+                })
                 await ws_manager.send_to_node(node_id, {"type": "done"})
 
             elif node_type == "scraping_agent":

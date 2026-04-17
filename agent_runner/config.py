@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # Apify
     apify_api_key: str = ""
 
+    @property
+    def apify_configured(self) -> bool:
+        return bool(self.apify_api_key)
+
     # Rate limiting
     max_executions_per_minute: int = 10
 

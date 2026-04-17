@@ -46,7 +46,7 @@ LEADUP_NODES = [
         },
     },
     {
-        "node_type": "agent",
+        "node_type": "apify_agent",
         "label": "📍 Apify — Google Maps",
         "system_prompt": (
             "Eres un agente de scraping. Recibes un JSON array de empresas. "
