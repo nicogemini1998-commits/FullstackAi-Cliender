@@ -1,8 +1,55 @@
 from __future__ import annotations
 import json
+import re
 import uuid
 from ..database import db_conn
 from .fullstackai_client import trigger_enrichment
+
+
+def _extract_json(text: str) -> list:
+    """
+    Extrae empresas del texto aunque el JSON esté truncado.
+    Estrategia: intentar array completo primero; si falla,
+    extraer objetos {} individuales uno a uno.
+    """
+    # 1. Array completo
+    start = text.find("[")
+    end   = text.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(text[start:end+1])
+        except Exception:
+            pass
+
+    # 2. Parse directo
+    try:
+        return json.loads(text.strip())
+    except Exception:
+        pass
+
+    # 3. Extraer objetos {} completos (cuando el array está truncado)
+    companies = []
+    pos = text.find("{")
+    while pos != -1:
+        depth = 0
+        i = pos
+        while i < len(text):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        obj = json.loads(text[pos:i+1])
+                        if isinstance(obj, dict) and obj.get("name"):
+                            companies.append(obj)
+                    except Exception:
+                        pass
+                    break
+            i += 1
+        pos = text.find("{", i + 1)
+
+    return companies
 
 
 async def run_enrichment(sector: str, city: str, qty: int) -> dict:
@@ -16,16 +63,8 @@ async def run_enrichment(sector: str, city: str, qty: int) -> dict:
         return {"ok": False, "error": result["error"]}
 
     raw_output = result.get("output", "")
-    # Extraer JSON de dentro de bloques ```json ... ``` si Claude los añade
-    clean = raw_output.strip()
-    if clean.startswith("```"):
-        clean = clean.split("```")[1]
-        if clean.startswith("json"):
-            clean = clean[4:]
-        clean = clean.strip()
-    try:
-        companies = json.loads(clean)
-    except (json.JSONDecodeError, ValueError):
+    companies = _extract_json(raw_output)
+    if not companies:
         return {"ok": False, "error": "Output del flujo no es JSON válido", "raw": raw_output[:500]}
 
     if not isinstance(companies, list):

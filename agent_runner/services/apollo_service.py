@@ -25,12 +25,9 @@ async def search_leads(
         roles = ["CEO", "Director General", "Fundador", "Gerente", "Owner"]
 
     payload = {
-        "api_key": key,
-        "q_organization_industry_tag_ids": [],
         "q_keywords": sector,
         "person_titles": roles,
-        "prospected_by_current_team": ["no"],
-        "person_locations": [f"{city}, Spain"],
+        "person_locations": [city],
         "organization_locations": ["Spain"],
         "page": 1,
         "per_page": min(qty, 25),
@@ -39,12 +36,12 @@ async def search_leads(
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
-                f"{APOLLO_BASE}/mixed_people/search",
+                f"{APOLLO_BASE}/mixed_people/api_search",
                 json=payload,
                 headers={
                     "Content-Type": "application/json",
                     "Cache-Control": "no-cache",
-                    "X-Api-Key": key,
+                    "x-api-key": key,
                 },
             )
             resp.raise_for_status()
