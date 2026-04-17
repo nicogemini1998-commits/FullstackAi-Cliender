@@ -4,6 +4,7 @@ import {
   Search, RefreshCw, LogOut, Loader2, Zap, SlidersHorizontal,
 } from 'lucide-react'
 import CompanyCard from '../components/CompanyCard'
+import CompanyModal from '../components/CompanyModal'
 import { companies as companiesApi, admin } from '../lib/api'
 import { useAuth } from '../hooks/useAuth.jsx'
 
@@ -41,6 +42,7 @@ export default function Dashboard() {
   const [opportunity, setOpportunity] = useState('')
   const [triggering, setTriggering] = useState(false)
   const [trigMsg, setTrigMsg]     = useState('')
+  const [modalIdx, setModalIdx]   = useState(null)
   const LIMIT = 12
 
   const load = useCallback(async () => {
@@ -183,7 +185,8 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {list.map((company, i) => (
               <CompanyCard key={company.id} company={company}
-                cardIndex={(page-1)*LIMIT+i+1} onStatusChange={load}/>
+                cardIndex={(page-1)*LIMIT+i+1}
+                onClick={() => setModalIdx(i)}/>
             ))}
           </div>
         )}
@@ -203,6 +206,20 @@ export default function Dashboard() {
           </div>
         )}
       </main>
+
+      {/* ── Modal ficha completa ── */}
+      {modalIdx !== null && list[modalIdx] && (
+        <CompanyModal
+          company={list[modalIdx]}
+          cardIndex={(page-1)*LIMIT + modalIdx + 1}
+          total={total}
+          hasPrev={modalIdx > 0}
+          hasNext={modalIdx < list.length - 1}
+          onClose={() => setModalIdx(null)}
+          onPrev={() => { if (modalIdx > 0) setModalIdx(v => v - 1) }}
+          onNext={() => { if (modalIdx < list.length - 1) setModalIdx(v => v + 1) }}
+        />
+      )}
     </div>
   )
 }

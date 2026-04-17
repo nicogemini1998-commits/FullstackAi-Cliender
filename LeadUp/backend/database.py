@@ -71,6 +71,12 @@ CREATE TABLE IF NOT EXISTS lu_companies (
     opportunity_tech   TEXT,
     opportunity_av     TEXT,
     summary            TEXT,
+    redes_sociales     TEXT,
+    captacion_leads    TEXT,
+    email_marketing    TEXT,
+    video_contenido    TEXT,
+    seo_info           TEXT,
+    oportunidad_hbd    TEXT,
     raw_data           JSONB,
     enriched_at        TIMESTAMP DEFAULT NOW(),
     created_at         TIMESTAMP DEFAULT NOW()

@@ -39,7 +39,7 @@ LEADUP_NODES = [
         "position_y": 300,
         "order_index": 1,
         "config": {
-            "model": "claude-sonnet-4-6",
+            "model": "claude-haiku-4-5-20251001",
             "qty": 10,
             "country": "ES",
             "roles": ["CEO", "Director General", "Fundador", "Gerente"],
@@ -59,7 +59,7 @@ LEADUP_NODES = [
         "position_y": 300,
         "order_index": 2,
         "config": {
-            "model": "claude-sonnet-4-6",
+            "model": "claude-haiku-4-5-20251001",
             "actor": "compass/google-maps-scraper",
         },
     },
@@ -82,28 +82,35 @@ LEADUP_NODES = [
         "position_y": 300,
         "order_index": 3,
         "config": {
-            "model": "claude-sonnet-4-6",
+            "model": "claude-haiku-4-5-20251001",
         },
     },
     {
         "node_type": "agent",
         "label": "🧠 Claude Analista — Diagnóstico",
         "system_prompt": (
-            "Eres un analista de negocio digital experto. Recibes un JSON array de empresas enriquecidas. "
-            "Para cada empresa, añade: "
-            "digital_score (int 0-100), "
+            "Eres un analista de negocio digital experto para un equipo comercial. "
+            "Recibes un JSON array de empresas enriquecidas con datos de Apollo, Google Maps y web scraping. "
+            "Para cada empresa genera EXACTAMENTE estos campos adicionales: "
+            "digital_score (int 0-100 basado en su presencia digital), "
             "opportunity_level ('ALTA'|'MEDIA'|'BAJA'), "
-            "opportunity_sales (string con 2-3 bullets de oportunidad comercial), "
-            "opportunity_tech (string con 2-3 bullets de oportunidad tecnológica), "
-            "opportunity_av (string con 2-3 bullets de oportunidad audiovisual), "
-            "summary (string de 2 frases para el comercial). "
+            "summary (2 frases concisas sobre el negocio para el comercial), "
+            "redes_sociales (string: describe qué redes tiene activas y cómo las usa), "
+            "captacion_leads (string: describe su sistema de captación), "
+            "email_marketing (string: describe su email marketing), "
+            "video_contenido (string: describe su contenido audiovisual), "
+            "seo_info (string: describe su SEO y posicionamiento), "
+            "oportunidad_hbd (string: resumen oportunidad total, ej: 'ALTA — Score 71/100 — amplias áreas de mejora'), "
+            "opportunity_sales (bullets: oportunidades Sales/CRM con impacto estimado), "
+            "opportunity_tech (bullets: oportunidades Tech/IA con impacto estimado), "
+            "opportunity_av (bullets: oportunidades Contenido AV con impacto). "
             "Devuelve el array enriquecido. Solo JSON válido."
         ),
         "position_x": 1140,
         "position_y": 300,
         "order_index": 4,
         "config": {
-            "model": "claude-sonnet-4-6",
+            "model": "claude-haiku-4-5-20251001",
             "max_tokens": 8192,
         },
     },

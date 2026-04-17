@@ -95,8 +95,9 @@ async def _save_company(data: dict):
                      has_crm, social_facebook, social_linkedin, social_instagram,
                      has_facebook_pixel, has_google_ads, seo_score,
                      opportunity_level, opportunity_sales, opportunity_tech, opportunity_av,
-                     summary, raw_data)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+                     summary, redes_sociales, captacion_leads, email_marketing,
+                     video_contenido, seo_info, oportunidad_hbd, raw_data)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
                 ON CONFLICT DO NOTHING
                 RETURNING id
                 """,
@@ -120,6 +121,12 @@ async def _save_company(data: dict):
                 data.get("opportunity_tech"),
                 data.get("opportunity_av"),
                 data.get("summary"),
+                data.get("redes_sociales"),
+                data.get("captacion_leads"),
+                data.get("email_marketing"),
+                data.get("video_contenido"),
+                data.get("seo_info"),
+                data.get("oportunidad_hbd"),
                 json.dumps(data),
             )
             if not company:
