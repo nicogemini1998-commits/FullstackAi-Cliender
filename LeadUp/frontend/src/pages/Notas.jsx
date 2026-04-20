@@ -3,7 +3,7 @@ import { useAuth } from '../hooks/useAuth.jsx'
 import api from '../lib/api'
 import {
   FileText, Phone, Globe, CheckCircle2, PhoneMissed,
-  XCircle, Clock, Calendar, Search, ChevronDown, ChevronUp,
+  XCircle, Clock, Calendar, Search, ChevronDown, ChevronUp, Trash2,
 } from 'lucide-react'
 
 const STATUS = {
@@ -14,7 +14,7 @@ const STATUS = {
   closed:      { label:'Agendado',      color:'#10b981', bg:'rgba(16,185,129,0.1)',  Icon:CheckCircle2 },
 }
 
-function NoteCard({ note, expanded, onToggle }) {
+function NoteCard({ note, expanded, onToggle, onDelete }) {
   const s = STATUS[note.call_status] || STATUS.pending
   const SIcon = s.Icon
   const dateStr = new Date(note.assigned_date).toLocaleDateString('es-ES', {
@@ -66,7 +66,7 @@ function NoteCard({ note, expanded, onToggle }) {
           )}
         </div>
 
-        {/* Right: status + fecha + toggle */}
+        {/* Right: status + fecha + toggle + borrar */}
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full"
             style={{background:s.bg,color:s.color,border:`1px solid ${s.color}25`}}>
@@ -76,8 +76,20 @@ function NoteCard({ note, expanded, onToggle }) {
             <Calendar size={10}/>
             <span className="font-mono text-xs">{dateStr}</span>
           </div>
-          <div style={{color:'rgba(255,255,255,0.2)'}}>
-            {expanded ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+          <div className="flex items-center gap-2">
+            {/* Borrar nota */}
+            <button
+              onClick={e=>{ e.stopPropagation(); onDelete(note.assignment_id) }}
+              title="Eliminar nota"
+              style={{background:'none',border:'none',cursor:'pointer',padding:4,
+                color:'rgba(239,68,68,0.4)',transition:'color .15s ease'}}
+              onMouseOver={e=>e.currentTarget.style.color='#ef4444'}
+              onMouseOut={e=>e.currentTarget.style.color='rgba(239,68,68,0.4)'}>
+              <Trash2 size={13}/>
+            </button>
+            <div style={{color:'rgba(255,255,255,0.2)'}}>
+              {expanded ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+            </div>
           </div>
         </div>
       </div>
@@ -139,19 +151,30 @@ function NoteCard({ note, expanded, onToggle }) {
 
 export default function Notas() {
   const { user } = useAuth()
-  const [notes, setNotes]     = useState([])
+  const [notes, setNotes]       = useState([])
   const [filtered, setFiltered] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch]   = useState('')
+  const [loading, setLoading]   = useState(true)
+  const [search, setSearch]     = useState('')
   const [expanded, setExpanded] = useState(null)
-  const [filter, setFilter]   = useState('all')
+  const [filter, setFilter]     = useState('all')
 
-  useEffect(() => {
+  const loadNotes = () => {
     api.get('/notes/')
-      .then(r => { setNotes(r.data); setFiltered(r.data) })
+      .then(r => setNotes(r.data))
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { loadNotes() }, [])
+
+  const handleDelete = async (assignmentId) => {
+    if (!window.confirm('¿Eliminar esta nota?')) return
+    try {
+      await api.delete(`/notes/${assignmentId}`)
+      setNotes(prev => prev.filter(n => n.assignment_id !== assignmentId))
+      if (expanded === assignmentId) setExpanded(null)
+    } catch { alert('Error al eliminar') }
+  }
 
   useEffect(() => {
     let result = notes
@@ -252,6 +275,7 @@ export default function Notas() {
                 onToggle={() => setExpanded(
                   expanded === n.assignment_id ? null : n.assignment_id
                 )}
+                onDelete={handleDelete}
               />
             ))}
           </div>

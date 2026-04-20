@@ -1,5 +1,6 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends
+import uuid
+from fastapi import APIRouter, Depends, HTTPException
 from ..database import db_conn
 from ..auth import verify_token
 
@@ -41,3 +42,21 @@ async def get_my_notes(user: dict = Depends(verify_token)):
             uid,
         )
     return [dict(r) for r in rows]
+
+
+@router.delete("/{assignment_id}")
+async def delete_note(assignment_id: str, user: dict = Depends(verify_token)):
+    """Elimina la nota de una asignación (borra el texto, mantiene el lead)."""
+    uid = user.get("id")
+    async with db_conn() as conn:
+        row = await conn.fetchrow(
+            "SELECT id FROM lu_daily_assignments WHERE id=$1 AND user_id=$2",
+            uuid.UUID(assignment_id), uid
+        )
+        if not row:
+            raise HTTPException(404, "Nota no encontrada")
+        await conn.execute(
+            "UPDATE lu_daily_assignments SET notes=NULL WHERE id=$1",
+            uuid.UUID(assignment_id)
+        )
+    return {"ok": True}
