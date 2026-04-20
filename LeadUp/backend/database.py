@@ -77,6 +77,11 @@ CREATE TABLE IF NOT EXISTS lu_companies (
     video_contenido    TEXT,
     seo_info           TEXT,
     oportunidad_hbd    TEXT,
+    opening_line       TEXT,
+    hook_captacion     TEXT,
+    hook_crm           TEXT,
+    hook_visibilidad   TEXT,
+    presencia_web      TEXT,
     raw_data           JSONB,
     enriched_at        TIMESTAMP DEFAULT NOW(),
     created_at         TIMESTAMP DEFAULT NOW()

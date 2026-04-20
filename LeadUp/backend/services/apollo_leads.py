@@ -409,9 +409,11 @@ async def save_lead_to_db(lead: dict) -> Optional[str]:
                  video_contenido,seo_info,oportunidad_hbd,
                  opportunity_sales,opportunity_tech,opportunity_av,
                  gmb_rating,gmb_reviews,
+                 opening_line,hook_captacion,hook_crm,hook_visibilidad,presencia_web,
                  source,sector_tag,raw_data)
                VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-                      $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+                      $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,
+                      $27,$28,$29,$30,$31,$32,$33,$34)
                RETURNING id""",
             empresa, lead.get("web") or None, lead.get("sector_tag"),
             lead.get("ciudad"), lead.get("empleados"),
@@ -423,6 +425,8 @@ async def save_lead_to_db(lead: dict) -> Optional[str]:
             lead.get("video_contenido"), lead.get("seo_info"), lead.get("oportunidad_hbd"),
             lead.get("opportunity_sales"), lead.get("opportunity_tech"), lead.get("opportunity_av"),
             lead.get("gmb_rating"), lead.get("gmb_reviews"),
+            lead.get("opening_line"), lead.get("hook_captacion"),
+            lead.get("hook_crm"), lead.get("hook_visibilidad"), lead.get("presencia_web"),
             "apollo", lead.get("sector_tag"), json.dumps(lead),
         )
         if not row:
