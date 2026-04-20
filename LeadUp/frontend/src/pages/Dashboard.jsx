@@ -3,9 +3,11 @@ import {
   Phone, PhoneOff, PhoneMissed, CheckCircle2, XCircle,
   RotateCcw, Globe, Link2, Zap, Clock as ClockIcon,
   BarChart3, Settings, LogOut, Activity, ArrowUp, ArrowDown, FileText,
+  Sun, Moon,
 } from 'lucide-react'
 import { leads as leadsApi } from '../lib/api'
 import { useAuth } from '../hooks/useAuth.jsx'
+import { useTheme } from '../hooks/useTheme.js'
 import Pipeline  from './Pipeline.jsx'
 import Analytics from './Analytics.jsx'
 import Ajustes   from './Ajustes.jsx'
@@ -596,6 +598,7 @@ function StatStrip({ stats, total }) {
 /* ─── Main Dashboard ──────────────────────────────────── */
 export default function Dashboard() {
   const { user, logout } = useAuth()
+  const { dark, toggle: toggleTheme } = useTheme()
   const isAdmin = user?.role === 'admin'
 
   // Nav: Analytics solo para admins
@@ -720,6 +723,13 @@ export default function Dashboard() {
                 {user?.name?.toUpperCase()}
               </span>
             )}
+            {/* Toggle dark/light */}
+            <button onClick={toggleTheme}
+              className="glass-btn glass-btn-neutral"
+              style={{padding:'6px 8px'}}
+              title={dark ? 'Modo claro' : 'Modo oscuro'}>
+              {dark ? <Sun size={13}/> : <Moon size={13}/>}
+            </button>
             <button onClick={logout} className="glass-btn glass-btn-neutral" style={{padding:'6px 8px'}}>
               <LogOut size={12}/>
             </button>
