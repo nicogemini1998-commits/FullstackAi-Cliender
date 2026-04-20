@@ -583,22 +583,33 @@ function StatStrip({ stats, total }) {
 }
 
 /* ─── Main Dashboard ──────────────────────────────────── */
-const NAV = [
-  {id:'centralita',  label:'Centralita',  Icon:Phone},
-  {id:'pipeline',    label:'Pipeline',    Icon:BarChart3},
-  {id:'analytics',   label:'Analytics',   Icon:Activity},
-  {id:'ajustes',     label:'Ajustes',     Icon:Settings},
-]
-
 export default function Dashboard() {
   const { user, logout } = useAuth()
-  const [todayData, setTodayData] = useState({leads:[],total:0,pending:0})
-  const [stats, setStats]         = useState({})
-  const [selIdx, setSelIdx]       = useState(0)
-  const [view, setView]           = useState('centralita')
-  const [loading, setLoading]     = useState(true)
-  const [assigning, setAssigning] = useState(false)
+  const isAdmin = user?.role === 'admin'
+
+  // Nav: Analytics solo para admins
+  const NAV = [
+    {id:'centralita', label:'Centralita', Icon:Phone},
+    {id:'pipeline',   label:'Pipeline',   Icon:BarChart3},
+    ...(isAdmin ? [{id:'analytics', label:'Analytics', Icon:Activity}] : []),
+    {id:'ajustes',    label:'Ajustes',    Icon:Settings},
+  ]
+
+  const [todayData, setTodayData]   = useState({leads:[],total:0,pending:0})
+  const [stats, setStats]           = useState({})
+  const [selIdx, setSelIdx]         = useState(0)
+  const [view, setView]             = useState('centralita')
+  const [loading, setLoading]       = useState(true)
+  const [assigning, setAssigning]   = useState(false)
   const [lastAssign, setLastAssign] = useState('')
+  const [mobileDetail, setMobileDetail] = useState(false) // mobile: mostrar detalle
+  const [isMobile, setIsMobile]     = useState(window.innerWidth < 768)
+
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -636,71 +647,113 @@ export default function Dashboard() {
   const selected = ordered[selIdx] || null
   const total    = ordered.length
 
-  const goNext = useCallback(()=>{ if(selIdx < total-1) setSelIdx(i=>i+1) }, [selIdx,total])
-  const goPrev = useCallback(()=>{ if(selIdx > 0) setSelIdx(i=>i-1)       }, [selIdx])
+  const goNext = useCallback(()=>{
+    if(selIdx < total-1) { setSelIdx(i=>i+1); if(isMobile) setMobileDetail(true) }
+  }, [selIdx,total,isMobile])
+  const goPrev = useCallback(()=>{
+    if(selIdx > 0) setSelIdx(i=>i-1)
+    else if(isMobile) setMobileDetail(false)
+  }, [selIdx,isMobile])
+
+  const gridCols = isMobile ? '1fr' : '220px 1fr'
+  const gridRows = isMobile ? '56px auto 1fr 56px' : '56px 1fr'
 
   return (
-    <div style={{display:'grid',gridTemplateRows:'56px 1fr',gridTemplateColumns:'220px 1fr',height:'100dvh',background:'var(--bg)'}}>
+    <div style={{display:'grid', gridTemplateRows:gridRows, gridTemplateColumns:gridCols,
+      height:'100dvh', background:'var(--bg)', overflow:'hidden'}}>
 
       {/* ══════════════════ TOPBAR ══════════════════ */}
-      <div style={{gridColumn:'1/-1',borderBottom:'1px solid var(--border)',
-        background:'rgba(4,4,10,0.9)',backdropFilter:'blur(24px)',
-        display:'flex',alignItems:'center',padding:'0 24px',gap:20,zIndex:20}}>
+      <div style={{
+        gridColumn:'1/-1', borderBottom:'1px solid var(--border)',
+        background:'rgba(4,4,10,0.92)', backdropFilter:'blur(24px)',
+        display:'flex', alignItems:'center', padding:'0 16px', gap:12, zIndex:20}}>
 
         {/* Logo */}
-        <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
-          <div style={{
-            width:30, height:30, borderRadius:8,
+        <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+          <div style={{width:28,height:28,borderRadius:7,
             background:'linear-gradient(135deg,rgba(59,130,246,.6),rgba(29,78,216,.4))',
             border:'1px solid rgba(96,165,250,.35)',
-            boxShadow:'inset 0 1px 0 rgba(255,255,255,.18),0 4px 14px rgba(220,38,38,.3)',
-            display:'flex',alignItems:'center',justifyContent:'center',
-          }}>
-            <Phone size={13} color="#fff"/>
+            display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <Phone size={12} color="#fff"/>
           </div>
-          <span style={{fontWeight:800,fontSize:14,letterSpacing:'0.05em'}}>
-            <span style={{color:'#3b82f6'}}>LEAD</span>
-            <span style={{color:'#fff'}}>UP</span>
-            <span style={{color:'rgba(255,255,255,0.22)',fontWeight:400,fontSize:11,marginLeft:6}}>CRM</span>
+          <span style={{fontWeight:800,fontSize:13,letterSpacing:'0.05em'}}>
+            <span style={{color:'#3b82f6'}}>LEAD</span><span style={{color:'#fff'}}>UP</span>
           </span>
         </div>
 
-        {/* System status */}
-        <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:24}}>
-          <div style={{
-            width:8, height:8, borderRadius:'50%', background:'#3b82f6',
-            animation:'pulse-red 2s infinite',
-            boxShadow:'0 0 8px rgba(59,130,246,0.4)',
-          }}/>
-          <span className="font-mono text-xs" style={{color:'rgba(255,255,255,0.38)'}}>
-            SYSTEM &nbsp;<strong style={{color:'#fff',fontWeight:600}}>OPTIMAL</strong>
-          </span>
-        </div>
+        {/* Status dot — oculto en mobile */}
+        {!isMobile && (
+          <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:16}}>
+            <div style={{width:7,height:7,borderRadius:'50%',background:'#3b82f6',
+              animation:'pulse-red 2s infinite',boxShadow:'0 0 6px rgba(59,130,246,0.4)'}}/>
+            <span className="font-mono text-xs" style={{color:'rgba(255,255,255,0.35)'}}>
+              OPTIMAL
+            </span>
+          </div>
+        )}
+
+        {!isMobile && <Clock/>}
 
         <Clock/>
 
         {/* Right side */}
-        <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:16}}>
-          <StatStrip stats={stats} total={total}/>
-
-          {/* User */}
-          <div style={{paddingLeft:16,borderLeft:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',gap:8}}>
-            <span className="font-mono text-xs hidden sm:block" style={{color:'rgba(255,255,255,0.3)'}}>
-              {user?.name?.toUpperCase()}
-            </span>
-            <button onClick={logout} className="glass-btn glass-btn-neutral"
-              style={{padding:'6px 8px'}}>
+        {/* Stats — oculto en mobile */}
+        <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:isMobile?8:16}}>
+          {!isMobile && <StatStrip stats={stats} total={total}/>}
+          <div style={{paddingLeft:isMobile?0:16,
+            borderLeft:isMobile?'none':'1px solid rgba(255,255,255,0.06)',
+            display:'flex',alignItems:'center',gap:8}}>
+            {!isMobile && (
+              <span className="font-mono text-xs" style={{color:'rgba(255,255,255,0.3)'}}>
+                {user?.name?.toUpperCase()}
+              </span>
+            )}
+            <button onClick={logout} className="glass-btn glass-btn-neutral" style={{padding:'6px 8px'}}>
               <LogOut size={12}/>
             </button>
           </div>
         </div>
       </div>
 
-      {/* ══════════════════ NAV ══════════════════ */}
+      {/* ══════════════════ WELCOME BANNER ══════════════════ */}
+      <div style={{gridColumn:'1/-1',
+        background:'linear-gradient(90deg,rgba(59,130,246,0.08) 0%,rgba(59,130,246,0.03) 100%)',
+        borderBottom:'1px solid rgba(59,130,246,0.12)',
+        padding:'8px 20px', display:'flex', alignItems:'center', justifyContent:'space-between',
+        flexShrink:0,
+        ...(isMobile ? {} : {display:'none'}) }}>
+        {isMobile && (
+          <>
+            <div>
+              <p style={{fontSize:15,fontWeight:700,color:'#fff'}}>
+                Bienvenido, {user?.name} 👋
+              </p>
+              <p className="font-mono text-xs" style={{color:'rgba(255,255,255,0.4)'}}>
+                {total} leads hoy · {stats.pending||0} pendientes
+              </p>
+            </div>
+            <StatStrip stats={stats} total={total}/>
+          </>
+        )}
+      </div>
+
+      {/* Welcome banner desktop — inline en nav */}
+      {/* ══════════════════ NAV (DESKTOP ONLY) ══════════════════ */}
+      {!isMobile && (
       <div style={{borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',
         background:'rgba(4,4,10,0.6)',backdropFilter:'blur(20px)',zIndex:10}}>
 
-        <div style={{flex:1,paddingTop:12}}>
+        {/* Welcome desktop */}
+        <div style={{padding:'16px 20px 0', borderBottom:'1px solid rgba(255,255,255,0.04)', marginBottom:8}}>
+          <p style={{fontSize:12,fontWeight:700,color:'#fff',marginBottom:2}}>
+            Hola, {user?.name} 👋
+          </p>
+          <p className="font-mono" style={{fontSize:10,color:'rgba(255,255,255,0.3)'}}>
+            {isAdmin ? 'ADMINISTRADOR' : 'COMERCIAL'} · {new Date().toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'})}
+          </p>
+        </div>
+
+        <div style={{flex:1,paddingTop:8}}>
           {NAV.map(({id,label,Icon})=>(
             <button key={id}
               onClick={()=>setView(id)}
@@ -741,16 +794,19 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      )} {/* end desktop nav */}
 
       {/* ══════════════════ CONTENT ══════════════════ */}
       <div style={{display:'flex',overflow:'hidden',minHeight:0}}>
 
         {view === 'centralita' && (
           <>
-            {/* ── Queue (280px) ── */}
+            {/* ── Queue ── desktop: 280px fijo | mobile: full-width o hidden */}
             <div style={{
-              width:280, flexShrink:0, display:'flex', flexDirection:'column',
-              borderRight:'1px solid var(--border)',
+              width: isMobile ? '100%' : 280,
+              flexShrink:0, display: isMobile && mobileDetail ? 'none' : 'flex',
+              flexDirection:'column',
+              borderRight: isMobile ? 'none' : '1px solid var(--border)',
               background:'rgba(4,4,10,0.4)', overflow:'hidden',
             }}>
               {/* Queue header */}
@@ -802,30 +858,87 @@ export default function Dashboard() {
                     key={lead.assignment_id||lead.id}
                     lead={lead} idx={i}
                     active={i===selIdx}
-                    onClick={()=>setSelIdx(i)}
+                    onClick={()=>{ setSelIdx(i); if(isMobile) setMobileDetail(true) }}
                   />
                 ))}
               </div>
             </div>
 
-            {/* ── Lead Detail ── */}
-            <LeadDetail
-              lead={selected}
-              idx={selIdx}
-              total={total}
-              onStatus={handleStatus}
-              onNext={goNext}
-              onPrev={goPrev}
-            />
+            {/* ── Lead Detail — mobile: full screen cuando mobileDetail=true ── */}
+            <div style={{
+              display: isMobile && !mobileDetail ? 'none' : 'flex',
+              flex:1, flexDirection:'column', minWidth:0,
+            }}>
+              {/* Botón volver en mobile */}
+              {isMobile && mobileDetail && (
+                <button onClick={()=>setMobileDetail(false)}
+                  style={{display:'flex',alignItems:'center',gap:8,padding:'10px 16px',
+                    background:'rgba(255,255,255,0.03)',border:'none',
+                    borderBottom:'1px solid rgba(255,255,255,0.05)',
+                    color:'rgba(255,255,255,0.6)',cursor:'pointer',fontSize:13}}>
+                  <ArrowDown size={14} style={{transform:'rotate(90deg)'}}/> Volver a la lista
+                </button>
+              )}
+              <LeadDetail
+                lead={selected}
+                idx={selIdx}
+                total={total}
+                onStatus={handleStatus}
+                onNext={goNext}
+                onPrev={goPrev}
+              />
+            </div>
           </>
         )}
 
         {view === 'pipeline'  && <Pipeline/>}
-        {view === 'analytics' && <Analytics/>}
+        {view === 'analytics' && (!isAdmin
+          ? <div className="flex-1 flex items-center justify-center">
+              <p className="font-mono text-sm" style={{color:'rgba(255,255,255,0.2)'}}>SOLO ADMINISTRADORES</p>
+            </div>
+          : <Analytics/>)}
         {view === 'ajustes'   && <Ajustes/>}
       </div>
 
-      {/* spin keyframe inline */}
+      {/* ══════════════════ BOTTOM NAV MOBILE ══════════════════ */}
+      {isMobile && (
+        <div style={{
+          gridColumn:'1/-1',
+          display:'flex', alignItems:'center', justifyContent:'space-around',
+          background:'rgba(4,4,10,0.95)', backdropFilter:'blur(24px)',
+          borderTop:'1px solid rgba(255,255,255,0.06)', zIndex:20,
+          paddingBottom:'env(safe-area-inset-bottom)',
+        }}>
+          {NAV.map(({id,label,Icon})=>(
+            <button key={id} onClick={()=>{ setView(id); setMobileDetail(false) }}
+              style={{
+                flex:1, display:'flex', flexDirection:'column', alignItems:'center',
+                gap:3, padding:'10px 4px', background:'transparent', border:'none',
+                cursor:'pointer', transition:'all 150ms ease',
+                color: view===id ? '#3b82f6' : 'rgba(255,255,255,0.35)',
+              }}>
+              <Icon size={18}/>
+              <span style={{fontSize:10,fontFamily:"'DM Mono',monospace",fontWeight:view===id?700:400}}>
+                {label}
+              </span>
+              {view===id && (
+                <div style={{width:4,height:4,borderRadius:'50%',background:'#3b82f6',
+                  boxShadow:'0 0 6px rgba(59,130,246,0.6)'}}/>
+              )}
+            </button>
+          ))}
+          {isAdmin && (
+            <button onClick={handleAssign} disabled={assigning}
+              style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',
+                gap:3,padding:'10px 4px',background:'transparent',border:'none',cursor:'pointer',
+                color: assigning ? 'rgba(255,255,255,0.3)' : 'rgba(59,130,246,0.8)'}}>
+              {assigning ? <RotateCcw size={18} style={{animation:'spin 1s linear infinite'}}/> : <Zap size={18}/>}
+              <span style={{fontSize:10,fontFamily:"'DM Mono',monospace"}}>Asignar</span>
+            </button>
+          )}
+        </div>
+      )}
+
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
     </div>
   )
