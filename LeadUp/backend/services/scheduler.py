@@ -140,6 +140,53 @@ async def _daily_assignment():
     print("✅ Asignación diaria completada")
 
 
+# ── Retención 10 días ─────────────────────────────────────────────────────────
+RETENTION_DAYS  = 10   # días que se conserva un lead normal
+AGENDADO_DAYS   = 60   # días que se conserva un lead agendado (negociación activa)
+
+async def _cleanup_old_leads():
+    """
+    Limpieza nocturna:
+    - Leads normales > 10 días: se borran (salvo agendados)
+    - Leads agendados > 60 días: se borran
+    - Se conservan TODAS las notas mientras el lead esté activo
+    """
+    cutoff_normal  = date.today() - timedelta(days=RETENTION_DAYS)
+    cutoff_agendado = date.today() - timedelta(days=AGENDADO_DAYS)
+
+    async with db_conn() as conn:
+        # 1. Borrar asignaciones antiguas que NO son agendado
+        r1 = await conn.execute(
+            """
+            DELETE FROM lu_daily_assignments
+            WHERE assigned_date < $1
+              AND status NOT IN ('agendado', 'pending')
+            """,
+            cutoff_normal,
+        )
+
+        # 2. Borrar asignaciones agendado muy antiguas (>60 días)
+        r2 = await conn.execute(
+            "DELETE FROM lu_daily_assignments WHERE assigned_date < $1 AND status='agendado'",
+            cutoff_agendado,
+        )
+
+        # 3. Limpiar empresas huérfanas (sin asignaciones activas y sin leads agendados)
+        r3 = await conn.execute(
+            """
+            DELETE FROM lu_companies
+            WHERE created_at::date < $1
+              AND id NOT IN (
+                SELECT DISTINCT company_id FROM lu_daily_assignments
+                WHERE status IN ('agendado','pending','no_answer')
+              )
+            """,
+            cutoff_normal,
+        )
+
+        print(f"🧹 Limpieza: {r1} asignaciones | {r2} agendados expirados | {r3} empresas antiguas")
+
+
 async def trigger_daily_assignment():
     """Disparar manualmente desde el endpoint admin."""
     await _daily_assignment()
@@ -147,16 +194,26 @@ async def trigger_daily_assignment():
 
 def start_scheduler():
     global _scheduler
-    s = get_settings()
     _scheduler = AsyncIOScheduler(timezone="Europe/Madrid")
+
+    # Asignación diaria 08:00
     _scheduler.add_job(
         _daily_assignment,
         CronTrigger(hour=8, minute=0),
         id="daily_leads",
         replace_existing=True,
     )
+
+    # Limpieza nocturna 02:00 (retención 10 días)
+    _scheduler.add_job(
+        _cleanup_old_leads,
+        CronTrigger(hour=2, minute=0),
+        id="cleanup_leads",
+        replace_existing=True,
+    )
+
     _scheduler.start()
-    print(f"⏰ Scheduler activo — asignación diaria a las 08:00")
+    print("⏰ Scheduler activo — asignación 08:00 · limpieza 02:00 (retención 10 días)")
 
 
 def stop_scheduler():
