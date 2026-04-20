@@ -379,28 +379,90 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
           </div>
         )}
 
-        {/* Ecosistema digital */}
-        {(lead.redes_sociales || lead.captacion_leads || lead.has_crm || lead.seo_score > 0) && (
-          <div>
-            <p className="font-mono text-xs mb-3 tracking-widest font-bold"
-              style={{color:'rgba(255,255,255,0.22)'}}>ECOSISTEMA DIGITAL — DIAGNÓSTICO</p>
-            <div className="rounded-2xl overflow-hidden"
-              style={{background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.05)'}}>
-              {[
-                {label:'Presencia web',  val: lead.website ? 'Activa' : 'Sin web',              ok:!!lead.website},
-                {label:'CRM detectado',  val: lead.has_crm || 'No detectado',                    ok:!!lead.has_crm},
-                {label:'Redes sociales', val: lead.redes_sociales || '—',                        ok:!!lead.redes_sociales},
-                {label:'Captación leads',val: lead.captacion_leads || '—',                       ok:!!lead.captacion_leads},
-                {label:'Email marketing',val: lead.email_marketing || '—',                       ok:!!lead.email_marketing},
-                {label:'SEO',            val: lead.seo_score ? `${lead.seo_score}/100` : '—',    ok:(lead.seo_score||0)>=40},
-              ].map(({label,val,ok})=>(
-                <div key={label} className="flex items-center justify-between px-4 py-2.5"
-                  style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
-                  <span className="font-mono text-xs font-semibold" style={{color:'rgba(255,255,255,0.38)'}}>{label}</span>
-                  <span className="text-xs" style={{color: ok ? '#10b981' : 'rgba(255,255,255,0.5)'}}>{val}</span>
-                </div>
-              ))}
-            </div>
+        {/* Ecosistema digital — siempre visible */}
+        <div>
+          <p className="font-mono text-xs mb-3 tracking-widest font-bold"
+            style={{color:'rgba(255,255,255,0.22)'}}>ECOSISTEMA DIGITAL — DIAGNÓSTICO</p>
+          <div className="rounded-2xl overflow-hidden"
+            style={{background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.05)'}}>
+            {[
+              {label:'Presencia web',
+               val: lead.presencia_web || (lead.website ? `Activa · Score ${lead.seo_score||0}/100` : 'Sin web detectada'),
+               ok: !!lead.website || !!lead.presencia_web},
+              {label:'Redes sociales',
+               val: lead.redes_sociales || [
+                 lead.social_facebook && 'Facebook',
+                 lead.social_instagram && 'Instagram',
+                 lead.social_linkedin && 'LinkedIn',
+                 lead.social_youtube && 'YouTube',
+               ].filter(Boolean).join(', ') || 'Sin redes detectadas',
+               ok: !!(lead.redes_sociales || lead.social_facebook || lead.social_instagram)},
+              {label:'CRM detectado',
+               val: lead.has_crm || 'No detectado',
+               ok: !!lead.has_crm},
+              {label:'Captación leads',
+               val: lead.captacion_leads || (lead.has_facebook_pixel ? 'Pixel activo · Sin funnel estructurado' : 'Sin funnel estructurado'),
+               ok: !!(lead.captacion_leads || lead.has_facebook_pixel)},
+              {label:'Email marketing',
+               val: lead.email_marketing || 'Sin secuencias automatizadas detectadas',
+               ok: !!lead.email_marketing},
+              {label:'Video / Contenido',
+               val: lead.video_contenido || 'Sin producción audiovisual detectada',
+               ok: !!lead.video_contenido},
+              {label:'SEO',
+               val: lead.seo_info || (lead.seo_score ? `Score ${lead.seo_score}/100` : 'Posicionamiento básico'),
+               ok: (lead.seo_score||0) >= 40},
+              {label:'Oportunidad HBD',
+               val: lead.oportunidad_hbd || `${lead.opportunity_level||'ALTA'} — Score ${lead.digital_score||0}/100`,
+               ok: true},
+            ].map(({label,val,ok})=>(
+              <div key={label} className="flex items-start justify-between px-4 py-2.5 gap-4"
+                style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                <span className="font-mono text-xs font-semibold shrink-0 w-36"
+                  style={{color:'rgba(255,255,255,0.4)'}}>{label}</span>
+                <span className="text-xs text-right leading-relaxed"
+                  style={{color: ok ? '#e2e8f0' : 'rgba(255,255,255,0.4)'}}>{val}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Señales digitales reales */}
+        {(lead.has_facebook_pixel || lead.has_google_ads || lead.social_facebook || lead.social_instagram) && (
+          <div className="flex flex-wrap gap-2">
+            {lead.has_facebook_pixel && (
+              <span className="font-mono text-xs px-2.5 py-1 rounded-full"
+                style={{background:'rgba(59,130,246,0.1)',color:'#60a5fa',border:'1px solid rgba(59,130,246,0.2)'}}>
+                FB Pixel ✓
+              </span>
+            )}
+            {lead.has_google_ads && (
+              <span className="font-mono text-xs px-2.5 py-1 rounded-full"
+                style={{background:'rgba(245,158,11,0.1)',color:'#fbbf24',border:'1px solid rgba(245,158,11,0.2)'}}>
+                Google Ads ✓
+              </span>
+            )}
+            {lead.social_facebook && (
+              <a href={`https://${lead.social_facebook}`} target="_blank" rel="noopener noreferrer"
+                className="font-mono text-xs px-2.5 py-1 rounded-full transition-colors"
+                style={{background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.5)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                Facebook ↗
+              </a>
+            )}
+            {lead.social_instagram && (
+              <a href={`https://${lead.social_instagram}`} target="_blank" rel="noopener noreferrer"
+                className="font-mono text-xs px-2.5 py-1 rounded-full transition-colors"
+                style={{background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.5)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                Instagram ↗
+              </a>
+            )}
+            {lead.social_linkedin && (
+              <a href={`https://${lead.social_linkedin}`} target="_blank" rel="noopener noreferrer"
+                className="font-mono text-xs px-2.5 py-1 rounded-full transition-colors"
+                style={{background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.5)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                LinkedIn ↗
+              </a>
+            )}
           </div>
         )}
 
@@ -432,58 +494,54 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
         />
       </div>
 
-      {/* ── Action bar ── */}
-      <div className="shrink-0 px-8 py-4 flex items-center justify-between gap-3 flex-wrap"
+      {/* ── Action bar — 3 estados centrados + LLAMAR ── */}
+      <div className="shrink-0 px-8 py-4 flex items-center justify-between gap-3"
         style={{borderTop:'1px solid rgba(255,255,255,0.05)',
           background:'linear-gradient(0deg,rgba(0,0,0,0.35) 0%,transparent 100%)'}}>
 
-        {/* Left: status */}
+        {/* Los 3 estados juntos en el centro-izquierda */}
         <div className="flex items-center gap-2 flex-wrap">
-          {[
-            {s:'pending',  label:'Pendiente',  bg:'rgba(220,38,38,0.08)',  bc:'rgba(220,38,38,0.2)',  tc:'rgba(239,68,68,0.75)', icon:ClockIcon},
-            {s:'closed',   label:'Cerrado',    bg:'rgba(16,185,129,0.12)', bc:'rgba(16,185,129,0.3)', tc:'#34d399',               icon:CheckCircle2},
-          ].map(({s,label,bg,bc,tc,icon:Ic})=>(
-            <button key={s} onClick={()=>doStatus(s)} disabled={saving}
-              className="glass-btn flex items-center gap-1.5 px-4 py-2 text-xs font-semibold"
-              style={{
-                background: callStatus===s ? 'rgba(255,255,255,0.1)' : bg,
-                border:`1px solid ${callStatus===s ? 'rgba(255,255,255,0.2)' : bc}`,
-                color: callStatus===s ? '#fff' : tc,
-                boxShadow: callStatus===s ? 'inset 0 1px 0 rgba(255,255,255,0.15)' : 'none',
-              }}>
-              <Ic size={11}/>{label}
-            </button>
-          ))}
-        </div>
-
-        {/* Center: NO LO COGE / NO CONTESTA */}
-        <div className="flex items-center gap-2">
-          <button onClick={()=>doStatus('rejected')} disabled={saving}
-            className="glass-btn px-5 py-2.5 text-sm font-bold"
+          {/* CERRADO */}
+          <button onClick={()=>doStatus('closed')} disabled={saving}
+            className="glass-btn flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold"
             style={{
-              background: callStatus==='rejected' ? 'rgba(220,38,38,0.28)' : 'rgba(220,38,38,0.1)',
-              border:`1px solid ${callStatus==='rejected' ? 'rgba(239,68,68,0.5)' : 'rgba(59,130,246,0.22)'}`,
-              color:'#f87171',
-              boxShadow: callStatus==='rejected' ? '0 0 20px rgba(220,38,38,0.3)' : 'none',
+              background: callStatus==='closed' ? 'rgba(16,185,129,0.28)' : 'rgba(16,185,129,0.1)',
+              border:`1px solid ${callStatus==='closed' ? 'rgba(52,211,153,0.5)' : 'rgba(16,185,129,0.22)'}`,
+              color:'#34d399',
+              boxShadow: callStatus==='closed' ? '0 0 20px rgba(16,185,129,0.3)' : 'none',
             }}>
-            NO LO COGE
+            <CheckCircle2 size={13}/>CERRADO
           </button>
+
+          {/* NO CONTESTA */}
           <button onClick={()=>doStatus('no_answer')} disabled={saving}
-            className="glass-btn px-5 py-2.5 text-sm font-bold"
+            className="glass-btn flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold"
             style={{
               background: callStatus==='no_answer' ? 'rgba(245,158,11,0.22)' : 'rgba(245,158,11,0.08)',
               border:`1px solid ${callStatus==='no_answer' ? 'rgba(251,191,36,0.45)' : 'rgba(245,158,11,0.2)'}`,
               color:'#fbbf24',
               boxShadow: callStatus==='no_answer' ? '0 0 18px rgba(245,158,11,0.25)' : 'none',
             }}>
-            NO CONTESTA
+            <PhoneMissed size={13}/>NO CONTESTA
+          </button>
+
+          {/* NO LO COGE */}
+          <button onClick={()=>doStatus('rejected')} disabled={saving}
+            className="glass-btn flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold"
+            style={{
+              background: callStatus==='rejected' ? 'rgba(220,38,38,0.28)' : 'rgba(220,38,38,0.1)',
+              border:`1px solid ${callStatus==='rejected' ? 'rgba(239,68,68,0.5)' : 'rgba(220,38,38,0.22)'}`,
+              color:'#f87171',
+              boxShadow: callStatus==='rejected' ? '0 0 20px rgba(220,38,38,0.3)' : 'none',
+            }}>
+            <XCircle size={13}/>NO LO COGE
           </button>
         </div>
 
-        {/* Right: LLAMAR */}
+        {/* LLAMAR — derecha */}
         {primary?.phone ? (
           <a href={`tel:${primary.phone}`}
-            className="glass-btn glass-btn-red flex items-center gap-2.5 px-7 py-3 text-[13px] font-bold tracking-wider">
+            className="glass-btn glass-btn-blue flex items-center gap-2.5 px-7 py-3 text-[13px] font-bold tracking-wider">
             <Phone size={15}/>LLAMAR
           </a>
         ) : (

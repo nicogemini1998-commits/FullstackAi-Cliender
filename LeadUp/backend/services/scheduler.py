@@ -69,6 +69,15 @@ async def _already_assigned(company_id: str) -> bool:
     return row is not None
 
 
+# Ciudades de España para rotación diaria
+_SPAIN_CITIES = [
+    "Madrid","Barcelona","Valencia","Sevilla","Zaragoza","Málaga",
+    "Murcia","Palma","Las Palmas","Bilbao","Alicante","Córdoba",
+    "Valladolid","Vigo","Gijón","Hospitalet","A Coruña","Vitoria",
+    "Granada","Elche","Oviedo","Santa Cruz","Pamplona","Almería",
+    "Fuenlabrada","Leganés","San Sebastián","Burgos","Santander","Albacete",
+]
+
 async def _daily_assignment():
     """
     Corre cada día a las 8am.
@@ -84,13 +93,12 @@ async def _daily_assignment():
 
     print(f"⏰ Scheduler diario: {len(users)} comerciales")
 
-    # Rotar sectores por día para variedad
-    day_offset   = date.today().toordinal() % len(CLIENDER_SECTORS)
-    today_sector = CLIENDER_SECTORS[day_offset]
-    city_idx     = date.today().toordinal() % len(today_sector["cities"])
-    city         = today_sector["cities"][city_idx]
+    # Rotación: cualquier nicho + cualquier ciudad de España
+    day = date.today().toordinal()
+    today_sector = CLIENDER_SECTORS[day % len(CLIENDER_SECTORS)]
+    city         = _SPAIN_CITIES[day % len(_SPAIN_CITIES)]
 
-    print(f"   Sector hoy: {today_sector['tag']} en {city}")
+    print(f"   Sector hoy: {today_sector['tag']} en {city} (España general)")
 
     # Obtener leads de Apollo para todos los usuarios
     leads_needed = LEADS_PER_USER * len(users)
