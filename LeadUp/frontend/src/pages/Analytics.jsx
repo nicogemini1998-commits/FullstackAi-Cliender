@@ -1,200 +1,315 @@
 import { useState, useEffect } from 'react'
-import { leads as leadsApi } from '../lib/api'
 import { useAuth } from '../hooks/useAuth.jsx'
 import api from '../lib/api'
 
-function Metric({ label, value, color, sub }) {
+/* ── helpers ────────────────────────────────────────────── */
+const clr = v => v >= 30 ? '#10b981' : v >= 15 ? '#f59e0b' : '#ef4444'
+
+function Arc({ value = 0, size = 56, stroke = 3.5 }) {
+  const r = (size/2) - stroke
+  const c = 2 * Math.PI * r
+  const fill = Math.min(value/100,1)*c
+  const color = clr(value)
   return (
-    <div className="rounded-2xl p-4" style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)'}}>
-      <p className="font-mono text-xs mb-2 tracking-widest" style={{color:'rgba(255,255,255,0.28)'}}>{label}</p>
-      <p className="text-3xl font-bold font-mono tabular-nums" style={{color}}>{value}</p>
-      {sub && <p className="font-mono text-xs mt-1.5" style={{color:'rgba(255,255,255,0.3)'}}>{sub}</p>}
+    <div style={{position:'relative',width:size,height:size,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <svg width={size} height={size} style={{position:'absolute',transform:'rotate(-90deg)'}}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke}/>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={`${fill} ${c}`} strokeLinecap="round"
+          style={{filter:`drop-shadow(0 0 5px ${color}88)`,transition:'stroke-dasharray .6s ease'}}/>
+      </svg>
+      <span style={{fontSize:size*0.22,fontWeight:700,fontFamily:"'DM Mono',monospace",color}}>{value}%</span>
     </div>
   )
 }
 
-function Bar({ label, value, max, color, sub }) {
-  const pct = max > 0 ? Math.round((value/max)*100) : 0
+function HBar({ value, max, color, height=6 }) {
+  const pct = max > 0 ? Math.min(Math.round(value/max*100),100) : 0
   return (
-    <div className="mb-4">
-      <div className="flex justify-between mb-1.5">
-        <span className="text-sm font-semibold text-white">{label}</span>
-        <span className="font-mono text-sm tabular-nums" style={{color}}>{value}</span>
-      </div>
-      <div className="h-2 rounded-full" style={{background:'rgba(255,255,255,0.06)'}}>
-        <div className="h-full rounded-full transition-all duration-700"
-          style={{width:`${pct}%`, background:color}}/>
-      </div>
-      {sub && <p className="font-mono text-xs mt-1" style={{color:'rgba(255,255,255,0.3)'}}>{sub}</p>}
+    <div style={{height,borderRadius:height,background:'rgba(255,255,255,0.05)',overflow:'hidden'}}>
+      <div style={{height:'100%',borderRadius:height,width:`${pct}%`,background:color,
+        transition:'width .7s cubic-bezier(0.32,0.72,0,1)'}}/>
     </div>
   )
 }
 
-async function fetchAllUsersStats() {
-  const USERS = [
-    {name:'Nicolas', email:'nicolas@cliender.com'},
-    {name:'Toni',    email:'toni@cliender.com'},
-    {name:'Dan',     email:'dan@cliender.com'},
-    {name:'Ethan',   email:'ethan@cliender.com'},
-    {name:'Ruben',   email:'ruben@cliender.com'},
-  ]
-  // Obtener stats globales desde el endpoint de stats (filtra por user en el backend)
-  // Como admins, usamos el endpoint de companies/stats global
-  try {
-    const r = await api.get('/companies/stats')
-    return r.data
-  } catch { return {} }
+function KPI({ label, value, color = '#fff', sub, big }) {
+  return (
+    <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',
+      borderRadius:16,padding:'16px 18px'}}>
+      <p style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:'rgba(255,255,255,0.3)',
+        letterSpacing:'0.1em',marginBottom:8}}>{label}</p>
+      <p style={{fontSize:big?36:28,fontWeight:800,fontFamily:"'DM Mono',monospace",color,lineHeight:1}}>
+        {value}
+      </p>
+      {sub && <p style={{fontSize:11,color:'rgba(255,255,255,0.35)',marginTop:6}}>{sub}</p>}
+    </div>
+  )
+}
+
+function UserCard({ u, rank }) {
+  const pct = u.conversion
+  const color = clr(pct)
+  const llamadas = u.llamadas
+  const maxBar = Math.max(u.total, 1)
+  const isAdmin = u.role === 'admin'
+
+  return (
+    <div style={{
+      background: rank === 1
+        ? 'linear-gradient(135deg,rgba(59,130,246,0.08),rgba(16,185,129,0.05))'
+        : 'rgba(255,255,255,0.025)',
+      border: rank === 1 ? '1px solid rgba(59,130,246,0.2)' : '1px solid rgba(255,255,255,0.06)',
+      borderRadius:16, padding:'18px 20px',
+      position:'relative', overflow:'hidden',
+    }}>
+      {rank === 1 && (
+        <div style={{position:'absolute',top:12,right:12,fontSize:10,fontFamily:"'DM Mono',monospace",
+          color:'#f59e0b',background:'rgba(245,158,11,0.12)',border:'1px solid rgba(245,158,11,0.2)',
+          padding:'2px 8px',borderRadius:999}}>TOP</div>
+      )}
+
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:14}}>
+        <div style={{width:40,height:40,borderRadius:'50%',flexShrink:0,
+          background:`linear-gradient(135deg,${color}33,${color}11)`,
+          border:`2px solid ${color}44`,
+          display:'flex',alignItems:'center',justifyContent:'center',
+          fontSize:16,fontWeight:800,color}}>
+          {u.name[0]}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <p style={{fontSize:15,fontWeight:700,color:'#fff',marginBottom:2}}>
+            {u.name}
+            {isAdmin && <span style={{fontSize:10,marginLeft:6,color:'#60a5fa',
+              fontFamily:"'DM Mono',monospace",background:'rgba(59,130,246,0.1)',
+              border:'1px solid rgba(59,130,246,0.2)',padding:'1px 6px',borderRadius:4}}>ADMIN</span>}
+          </p>
+          <p style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:'rgba(255,255,255,0.3)'}}>
+            {u.hoy} leads hoy · {llamadas} llamadas
+          </p>
+        </div>
+        <Arc value={pct} size={52}/>
+      </div>
+
+      {/* Stats grid */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
+        {[
+          {label:'CERRADOS',  v:u.cerrados,    color:'#10b981'},
+          {label:'NO COGE',   v:u.no_coge,     color:'#ef4444'},
+          {label:'NO CONTESTA',v:u.no_contesta,color:'#f59e0b'},
+        ].map(({label,v,color:c})=>(
+          <div key={label} style={{background:`${c}10`,border:`1px solid ${c}20`,
+            borderRadius:10,padding:'8px 10px',textAlign:'center'}}>
+            <p style={{fontSize:20,fontWeight:800,fontFamily:"'DM Mono',monospace",color:c,lineHeight:1}}>{v}</p>
+            <p style={{fontSize:9,fontFamily:"'DM Mono',monospace",color:'rgba(255,255,255,0.3)',
+              marginTop:3,letterSpacing:'0.06em'}}>{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Progress bar */}
+      <div style={{marginBottom:4}}>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+          <span style={{fontSize:10,fontFamily:"'DM Mono',monospace",color:'rgba(255,255,255,0.3)'}}>
+            PROGRESO — {llamadas}/{u.total} llamadas
+          </span>
+          <span style={{fontSize:10,fontFamily:"'DM Mono',monospace",color}}>{pct}% conversión</span>
+        </div>
+        <HBar value={llamadas} max={maxBar} color={`linear-gradient(90deg,#3b82f6,${color})`} height={5}/>
+      </div>
+    </div>
+  )
+}
+
+function BarChart({ data, valueKey, labelKey, color, title }) {
+  const max = Math.max(...data.map(d=>d[valueKey]), 1)
+  return (
+    <div style={{background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.05)',
+      borderRadius:16,padding:'18px 20px'}}>
+      <p style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:'rgba(255,255,255,0.3)',
+        letterSpacing:'0.1em',marginBottom:16}}>{title}</p>
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        {data.map(d=>(
+          <div key={d[labelKey]} style={{display:'flex',alignItems:'center',gap:10}}>
+            <span style={{fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.7)',
+              minWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+              {d[labelKey]}
+            </span>
+            <div style={{flex:1}}>
+              <HBar value={d[valueKey]} max={max} color={color} height={7}/>
+            </div>
+            <span style={{fontSize:11,fontFamily:"'DM Mono',monospace",
+              color:'rgba(255,255,255,0.4)',minWidth:24,textAlign:'right'}}>
+              {d[valueKey]}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function Analytics() {
   const { user } = useAuth()
-  const isAdmin  = user?.role === 'admin'
-  const [stats, setStats]   = useState({})
-  const [today, setToday]   = useState({ leads:[] })
+  const [data, setData]     = useState(null)
+  const [days, setDays]     = useState(7)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([leadsApi.stats(), leadsApi.today()])
-      .then(([sr, lr]) => { setStats(sr.data); setToday(lr.data) })
+    setLoading(true)
+    api.get(`/admin/analytics?days=${days}`)
+      .then(r => setData(r.data))
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [])
-
-  const total    = stats.total || 0
-  const closed   = stats.closed || 0
-  const rejected = stats.rejected || 0
-  const noAnswer = stats.no_answer || 0
-  const pending  = stats.pending || 0
-  const called   = closed + rejected + noAnswer
-  const convRate = called > 0 ? Math.round((closed/called)*100) : 0
-  const maxVal   = Math.max(closed, rejected, noAnswer, pending, 1)
-
-  // Sectores del día
-  const bySector = {}
-  ;(today.leads||[]).forEach(l => {
-    const s = l.sector_tag || l.sector || 'otro'
-    bySector[s] = (bySector[s]||0) + 1
-  })
-  const sectors = Object.entries(bySector).sort((a,b)=>b[1]-a[1]).slice(0,5)
-
-  // Rendimiento simulado por comercial (admin ve esto)
-  const comerciales = [
-    {name:'Ethan', total:12, closed:3, rejected:2, no_answer:4},
-    {name:'Ruben', total:7,  closed:1, rejected:1, no_answer:2},
-  ]
+  }, [days])
 
   if (loading) return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
+    <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div style={{width:28,height:28,borderRadius:'50%',
+        border:'2px solid rgba(59,130,246,0.6)',borderTopColor:'transparent',
+        animation:'spin 0.8s linear infinite'}}/>
     </div>
   )
 
+  if (!data) return null
+
+  const g = data.global
+  const convColor = clr(g.conversion_global)
+  const ranked = [...(data.por_usuario||[])].sort((a,b)=>b.conversion-a.conversion)
+
   return (
-    <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
-      <div className="max-w-3xl mx-auto space-y-5">
+    <div style={{flex:1,overflowY:'auto',padding:'20px 24px',
+      fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif"}}>
+      <div style={{maxWidth:900,margin:'0 auto'}}>
 
-        <div>
-          <h2 className="text-lg font-bold text-white mb-1">Analytics</h2>
-          <p className="font-mono text-xs" style={{color:'rgba(255,255,255,0.3)'}}>
-            {user?.name?.toUpperCase()} · {isAdmin ? 'ADMIN' : 'COMERCIAL'} · {new Date().toLocaleDateString('es-ES')}
-          </p>
-        </div>
-
-        {/* KPIs */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Metric label="TOTAL HOY"     value={total}    color="#fff"     sub="leads asignados"/>
-          <Metric label="LLAMADAS"      value={called}   color="#3b82f6"  sub="realizadas"/>
-          <Metric label="CERRADOS"      value={closed}   color="#10b981"  sub={`${convRate}% tasa`}/>
-          <Metric label="PENDIENTES"    value={pending}  color="#f59e0b"  sub="por llamar"/>
-        </div>
-
-        {/* Conversión */}
-        <div className="rounded-2xl p-5" style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)'}}>
-          <p className="font-mono text-xs mb-3 tracking-widest" style={{color:'rgba(255,255,255,0.28)'}}>TASA DE CONVERSIÓN</p>
-          <div className="flex items-end gap-3 mb-3">
-            <span className="text-5xl font-bold font-mono" style={{color: convRate>=30 ? '#10b981' : convRate>=15 ? '#f59e0b' : '#ef4444'}}>
-              {convRate}%
-            </span>
-            <span className="text-sm mb-1" style={{color:'rgba(255,255,255,0.4)'}}>
-              {closed} cerrados de {called} llamadas
-            </span>
-          </div>
-          <div className="h-2 rounded-full" style={{background:'rgba(255,255,255,0.06)'}}>
-            <div className="h-full rounded-full transition-all duration-1000"
-              style={{width:`${convRate}%`, background:'linear-gradient(90deg,#3b82f6,#10b981)'}}/>
-          </div>
-        </div>
-
-        {/* Desglose estados */}
-        <div className="rounded-2xl p-5" style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)'}}>
-          <p className="font-mono text-xs mb-4 tracking-widest" style={{color:'rgba(255,255,255,0.28)'}}>DESGLOSE</p>
-          <Bar label="Pendientes"   value={pending}  max={maxVal} color="#3b82f6"/>
-          <Bar label="Cerrados"     value={closed}   max={maxVal} color="#10b981"/>
-          <Bar label="No lo coge"   value={rejected} max={maxVal} color="#ef4444"/>
-          <Bar label="No contesta"  value={noAnswer} max={maxVal} color="#f59e0b"/>
-        </div>
-
-        {/* ADMIN ONLY: rendimiento por comercial */}
-        {isAdmin && (
-          <div className="rounded-2xl p-5" style={{background:'rgba(59,130,246,0.04)',border:'1px solid rgba(59,130,246,0.15)'}}>
-            <p className="font-mono text-xs mb-4 tracking-widest font-bold" style={{color:'rgba(96,165,250,0.7)'}}>
-              RENDIMIENTO POR COMERCIAL — SOLO ADMINS
+        {/* Header */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24}}>
+          <div>
+            <h2 style={{fontSize:20,fontWeight:800,color:'#fff',marginBottom:4}}>Analytics</h2>
+            <p style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:'rgba(255,255,255,0.3)'}}>
+              {user?.name?.toUpperCase()} · {new Date().toLocaleDateString('es-ES',
+                {weekday:'long',day:'numeric',month:'long'})}
             </p>
-            <div className="space-y-4">
-              {comerciales.map(c => {
-                const callsMade  = c.closed + c.rejected + c.no_answer
-                const rate       = callsMade > 0 ? Math.round((c.closed/callsMade)*100) : 0
-                const rateColor  = rate >= 30 ? '#10b981' : rate >= 15 ? '#f59e0b' : '#ef4444'
+          </div>
+          {/* Period selector */}
+          <div style={{display:'flex',gap:6}}>
+            {[1,7,30].map(d=>(
+              <button key={d} onClick={()=>setDays(d)}
+                style={{
+                  padding:'6px 14px',fontSize:11,fontFamily:"'DM Mono',monospace",
+                  fontWeight:days===d?700:400,cursor:'pointer',borderRadius:8,
+                  background: days===d ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.04)',
+                  border: days===d ? '1px solid rgba(96,165,250,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                  color: days===d ? '#60a5fa' : 'rgba(255,255,255,0.4)',
+                }}>
+                {d===1?'HOY':d===7?'7D':'30D'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* KPI Strip */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:12,marginBottom:24}}>
+          <KPI label="ASIGNACIONES"  value={g.total_asignaciones} big/>
+          <KPI label="LLAMADAS"      value={g.llamadas_realizadas} color="#3b82f6"/>
+          <KPI label="CERRADOS"      value={g.cerrados}  color="#10b981"/>
+          <KPI label="NO COGE"       value={g.no_coge}   color="#ef4444"/>
+          <KPI label="NO CONTESTA"   value={g.no_contesta} color="#f59e0b"/>
+          <KPI label="PENDIENTES"    value={g.pendientes} color="rgba(255,255,255,0.5)"/>
+        </div>
+
+        {/* Conversión global */}
+        <div style={{
+          display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:24,
+        }}>
+          <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',
+            borderRadius:16,padding:'20px 24px',display:'flex',alignItems:'center',gap:20}}>
+            <Arc value={g.conversion_global} size={72} stroke={5}/>
+            <div>
+              <p style={{fontSize:11,fontFamily:"'DM Mono',monospace",
+                color:'rgba(255,255,255,0.3)',marginBottom:6,letterSpacing:'0.1em'}}>
+                TASA DE CONVERSIÓN GLOBAL
+              </p>
+              <p style={{fontSize:28,fontWeight:800,color:convColor,lineHeight:1}}>
+                {g.conversion_global}%
+              </p>
+              <p style={{fontSize:12,color:'rgba(255,255,255,0.4)',marginTop:4}}>
+                {g.cerrados} cerrados de {g.llamadas_realizadas} llamadas
+              </p>
+            </div>
+          </div>
+
+          {/* Evolución diaria simple */}
+          <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',
+            borderRadius:16,padding:'20px 24px'}}>
+            <p style={{fontSize:10,fontFamily:"'DM Mono',monospace",color:'rgba(255,255,255,0.3)',
+              letterSpacing:'0.1em',marginBottom:16}}>EVOLUCIÓN DIARIA</p>
+            <div style={{display:'flex',alignItems:'flex-end',gap:6,height:60}}>
+              {(data.diario||[]).length === 0 ? (
+                <p style={{fontSize:12,color:'rgba(255,255,255,0.2)'}}>Sin datos aún</p>
+              ) : (data.diario||[]).map((d,i)=>{
+                const maxD = Math.max(...(data.diario||[]).map(x=>x.total),1)
+                const h = Math.max(Math.round((d.total/maxD)*56),4)
+                const hc = d.cerrados>0 ? Math.max(Math.round((d.cerrados/d.total)*h),2) : 0
                 return (
-                  <div key={c.name} className="rounded-xl p-4"
-                    style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)'}}>
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <p className="font-bold text-white text-sm">{c.name}</p>
-                        <p className="font-mono text-xs" style={{color:'rgba(255,255,255,0.3)'}}>
-                          {callsMade}/{c.total} llamadas · {c.total - callsMade} pendientes
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-2xl font-bold font-mono" style={{color:rateColor}}>{rate}%</span>
-                        <p className="font-mono text-xs" style={{color:'rgba(255,255,255,0.3)'}}>conversión</p>
-                      </div>
+                  <div key={i} title={`${d.dia}: ${d.total} leads, ${d.cerrados} cerrados`}
+                    style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:1}}>
+                    <div style={{width:'100%',position:'relative',height:h}}>
+                      <div style={{position:'absolute',bottom:0,width:'100%',height:'100%',
+                        background:'rgba(59,130,246,0.25)',borderRadius:'4px 4px 0 0'}}/>
+                      {hc>0 && <div style={{position:'absolute',bottom:0,width:'100%',height:hc,
+                        background:'#10b981',borderRadius:'4px 4px 0 0',
+                        boxShadow:'0 0 6px rgba(16,185,129,0.4)'}}/>}
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      {[
-                        {label:'Cerrados',    v:c.closed,    color:'#10b981'},
-                        {label:'No coge',     v:c.rejected,  color:'#ef4444'},
-                        {label:'No contesta', v:c.no_answer, color:'#f59e0b'},
-                      ].map(({label,v,color})=>(
-                        <div key={label} className="rounded-lg p-2"
-                          style={{background:`${color}11`,border:`1px solid ${color}22`}}>
-                          <p className="text-lg font-bold font-mono" style={{color}}>{v}</p>
-                          <p className="font-mono text-xs" style={{color:'rgba(255,255,255,0.35)'}}>{label}</p>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-3 h-1.5 rounded-full" style={{background:'rgba(255,255,255,0.06)'}}>
-                      <div className="h-full rounded-full"
-                        style={{width:`${Math.round((callsMade/Math.max(c.total,1))*100)}%`,
-                          background:'linear-gradient(90deg,#3b82f6,#10b981)'}}/>
-                    </div>
+                    <span style={{fontSize:8,fontFamily:"'DM Mono',monospace",
+                      color:'rgba(255,255,255,0.2)',letterSpacing:'0.02em'}}>
+                      {d.dia.slice(5)}
+                    </span>
                   </div>
                 )
               })}
             </div>
+            <div style={{display:'flex',gap:16,marginTop:12}}>
+              <div style={{display:'flex',alignItems:'center',gap:5}}>
+                <div style={{width:8,height:8,borderRadius:2,background:'rgba(59,130,246,0.4)'}}/>
+                <span style={{fontSize:10,color:'rgba(255,255,255,0.3)',fontFamily:"'DM Mono',monospace"}}>Total</span>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:5}}>
+                <div style={{width:8,height:8,borderRadius:2,background:'#10b981'}}/>
+                <span style={{fontSize:10,color:'rgba(255,255,255,0.3)',fontFamily:"'DM Mono',monospace"}}>Cerrados</span>
+              </div>
+            </div>
           </div>
-        )}
+        </div>
 
-        {/* Sectores */}
-        {sectors.length > 0 && (
-          <div className="rounded-2xl p-5" style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)'}}>
-            <p className="font-mono text-xs mb-4 tracking-widest" style={{color:'rgba(255,255,255,0.28)'}}>LEADS POR SECTOR HOY</p>
-            {sectors.map(([s,n]) => (
-              <Bar key={s} label={s.charAt(0).toUpperCase()+s.slice(1)} value={n} max={sectors[0][1]} color="#3b82f6"/>
+        {/* Rendimiento por usuario */}
+        <div style={{marginBottom:24}}>
+          <p style={{fontSize:10,fontFamily:"'DM Mono',monospace",color:'rgba(255,255,255,0.3)',
+            letterSpacing:'0.1em',marginBottom:14}}>RENDIMIENTO POR USUARIO</p>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:12}}>
+            {ranked.map((u,i)=>(
+              <UserCard key={u.name} u={u} rank={i+1}/>
             ))}
           </div>
-        )}
+        </div>
+
+        {/* Sectores + Ciudades */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:16}}>
+          <BarChart
+            data={data.sectores||[]}
+            valueKey="n" labelKey="sector"
+            color="linear-gradient(90deg,rgba(59,130,246,0.6),rgba(59,130,246,0.3))"
+            title="LEADS POR SECTOR"/>
+          <BarChart
+            data={data.ciudades||[]}
+            valueKey="n" labelKey="city"
+            color="linear-gradient(90deg,rgba(16,185,129,0.6),rgba(16,185,129,0.3))"
+            title="LEADS POR CIUDAD"/>
+        </div>
+
       </div>
+      <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
     </div>
   )
 }
