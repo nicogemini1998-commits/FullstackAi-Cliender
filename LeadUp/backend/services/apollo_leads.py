@@ -28,14 +28,10 @@ APIFY_ACTOR = "compass~crawler-google-places"
 
 # ── Sectores CLIENDER ─────────────────────────────────────────────────────────
 CLIENDER_SECTORS = [
-    {"tag":"reformas",       "cities":["Madrid","Valencia","Barcelona","Sevilla","Bilbao"]},
-    {"tag":"clinicas",       "cities":["Madrid","Valencia","Barcelona","Sevilla","Málaga"]},
-    {"tag":"academias",      "cities":["Madrid","Valencia","Barcelona","Zaragoza"]},
-    {"tag":"inmobiliarias",  "cities":["Madrid","Valencia","Barcelona","Málaga","Alicante"]},
-    {"tag":"concesionarios", "cities":["Madrid","Valencia","Barcelona","Sevilla"]},
-    {"tag":"gimnasios",      "cities":["Madrid","Valencia","Barcelona","Bilbao"]},
-    {"tag":"seguros",        "cities":["Madrid","Valencia","Barcelona","Sevilla"]},
-    {"tag":"abogados",       "cities":["Madrid","Valencia","Barcelona","Sevilla","Bilbao"]},
+    {"tag":"reformas",       "cities":["Madrid","Valencia","Barcelona","Sevilla","Bilbao","Zaragoza"]},
+    {"tag":"academias",      "cities":["Madrid","Valencia","Barcelona","Zaragoza","Sevilla"]},
+    {"tag":"inmobiliarias",  "cities":["Madrid","Valencia","Barcelona","Málaga","Alicante","Sevilla"]},
+    {"tag":"abogados",       "cities":["Madrid","Valencia","Barcelona","Sevilla","Bilbao","Málaga"]},
 ]
 
 _NO_COMPETITORS = [

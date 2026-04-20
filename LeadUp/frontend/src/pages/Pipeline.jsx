@@ -5,8 +5,8 @@ import { leads as leadsApi } from '../lib/api'
 const COLS = [
   { key:'pending',   label:'PENDIENTE',       color:'#3b82f6', bg:'rgba(59,130,246,0.08)',  border:'rgba(59,130,246,0.2)',  Icon:Clock },
   { key:'no_answer', label:'NO CONTESTA',      color:'#f59e0b', bg:'rgba(245,158,11,0.08)',  border:'rgba(245,158,11,0.2)',  Icon:PhoneMissed },
-  { key:'rejected',  label:'NO LO COGE',       color:'#ef4444', bg:'rgba(239,68,68,0.08)',   border:'rgba(239,68,68,0.2)',   Icon:XCircle },
-  { key:'closed',    label:'CERRADO',          color:'#10b981', bg:'rgba(16,185,129,0.08)',  border:'rgba(16,185,129,0.2)',  Icon:CheckCircle2 },
+  { key:'no_interest',  label:'NO INTERESADO',       color:'#ef4444', bg:'rgba(239,68,68,0.08)',   border:'rgba(239,68,68,0.2)',   Icon:XCircle },
+  { key:'agendado',    label:'AGENDADO',          color:'#10b981', bg:'rgba(16,185,129,0.08)',  border:'rgba(16,185,129,0.2)',  Icon:CheckCircle2 },
 ]
 
 function LeadCard({ lead, onStatus }) {

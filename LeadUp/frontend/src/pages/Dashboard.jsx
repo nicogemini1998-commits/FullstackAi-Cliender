@@ -52,8 +52,8 @@ function ScoreArc({ value = 0 }) {
 /* ─── Queue Item ──────────────────────────────────────── */
 function QueueItem({ lead, idx, active, onClick }) {
   const s = lead.call_status
-  const done = ['closed','rejected'].includes(s)
-  const dotC = s==='closed' ? '#10b981' : s==='rejected' ? '#dc2626' : s==='no_answer' ? '#f59e0b' : '#dc2626'
+  const done = ['agendado','no_interest'].includes(s)
+  const dotC = s==='agendado' ? '#10b981' : s==='no_interest' ? '#dc2626' : s==='no_answer' ? '#f59e0b' : '#dc2626'
   const contacts = parseContacts(lead.contacts)
   const primary = contacts.find(c=>c?.is_primary) || contacts[0]
   const hasPhone = !!(primary?.phone)
@@ -260,36 +260,29 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
           </p>
           <div className="grid grid-cols-3 gap-3">
 
-            {/* Primary DM */}
+            {/* DM 1 — Contacto principal con MÓVIL */}
             {primary ? (
               <div className="rounded-2xl p-4 col-span-1 relative overflow-hidden"
                 style={{background:'rgba(59,130,246,0.06)',border:'1px solid rgba(59,130,246,0.22)'}}>
                 <div className="absolute top-0 right-0 w-16 h-16 rounded-full -mr-6 -mt-6"
                   style={{background:'rgba(59,130,246,0.06)',filter:'blur(12px)'}}/>
                 <p className="font-mono text-xs mb-2.5 font-bold"
-                  style={{color:'#3b82f6',letterSpacing:'0.08em'}}>
-                  CONTACTO PRINCIPAL · MÓVIL APOLLO
-                </p>
+                  style={{color:'#3b82f6',letterSpacing:'0.08em'}}>CONTACTO PRINCIPAL</p>
                 <p className="font-bold text-white text-[15px] mb-0.5">{primary.name||'—'}</p>
                 <p className="text-xs italic mb-3" style={{color:'rgba(255,255,255,0.4)'}}>{primary.role||'—'}</p>
-                {primary.email && (
-                  <p className="text-xs mb-2 truncate" style={{color:'rgba(255,255,255,0.38)'}}>{primary.email}</p>
-                )}
+                {/* Solo móvil en DM1 */}
                 {primary.phone ? (
                   <a href={`tel:${primary.phone}`}
-                    className="flex items-center gap-2 font-mono font-bold transition-all duration-150"
-                    style={{color:'#10b981',fontSize:15}}
-                    onMouseOver={e=>e.currentTarget.style.color='#34d399'}
-                    onMouseOut={e=>e.currentTarget.style.color='#10b981'}>
-                    <Phone size={13}/>
-                    {primary.phone}
+                    className="flex items-center gap-2 font-mono font-bold"
+                    style={{color:'#10b981',fontSize:16}}>
+                    <Phone size={14}/>{primary.phone}
                   </a>
                 ) : (
-                  <p className="font-mono text-xs" style={{color:'rgba(255,255,255,0.2)'}}>Sin teléfono disponible</p>
+                  <p className="font-mono text-xs" style={{color:'rgba(255,255,255,0.2)'}}>Sin móvil verificado</p>
                 )}
                 {primary.linkedin_url && (
                   <a href={primary.linkedin_url} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-xs mt-2 transition-colors"
+                    className="flex items-center gap-1.5 text-xs mt-2"
                     style={{color:'rgba(96,165,250,0.7)'}}>
                     <Link2 size={10}/>LinkedIn
                   </a>
@@ -302,7 +295,7 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
               </div>
             )}
 
-            {/* Secondary DMs */}
+            {/* DM 2 y 3 — Solo nombre y cargo relevante */}
             {[0,1].map(i => {
               const dm = secondary[i]
               return dm ? (
@@ -310,22 +303,12 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
                   style={{background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.07)'}}>
                   <p className="font-mono text-xs mb-2 font-bold"
                     style={{color:'rgba(255,255,255,0.28)',letterSpacing:'0.08em'}}>
-                    DECISOR SECUNDARIO
+                    DECISOR {i+2}
                   </p>
-                  <p className="font-bold text-white text-sm mb-0.5">{dm.name||'—'}</p>
-                  <p className="text-xs italic mb-2.5" style={{color:'rgba(255,255,255,0.38)'}}>{dm.role||'—'}</p>
-                  {dm.email && <p className="text-xs mb-1.5 truncate" style={{color:'rgba(255,255,255,0.35)'}}>{dm.email}</p>}
-                  {dm.phone && (
-                    <a href={`tel:${dm.phone}`}
-                      className="flex items-center gap-1.5 font-mono text-xs"
-                      style={{color:'#10b981'}}><Phone size={10}/>{dm.phone}</a>
-                  )}
-                  {dm.linkedin_url && (
-                    <a href={dm.linkedin_url} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs mt-1.5"
-                      style={{color:'rgba(96,165,250,0.6)'}}>
-                      <Link2 size={9}/>LinkedIn
-                    </a>
+                  <p className="font-bold text-white text-sm mb-1">{dm.name||'—'}</p>
+                  <p className="text-sm font-semibold" style={{color:'rgba(255,255,255,0.55)'}}>{dm.role||'—'}</p>
+                  {dm.email && (
+                    <p className="text-xs mt-2 truncate" style={{color:'rgba(255,255,255,0.35)'}}>{dm.email}</p>
                   )}
                 </div>
               ) : (
@@ -501,17 +484,19 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
 
         {/* Los 3 estados juntos en el centro-izquierda */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* CERRADO */}
-          <button onClick={()=>doStatus('closed')} disabled={saving}
+          {/* AGENDADO — abre el link de booking + registra estado */}
+          <a href="https://info.cliender.com/widget/bookings/ccl"
+            target="_blank" rel="noopener noreferrer"
+            onClick={()=>doStatus('agendado')}
             className="glass-btn flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold"
             style={{
-              background: callStatus==='closed' ? 'rgba(16,185,129,0.28)' : 'rgba(16,185,129,0.1)',
-              border:`1px solid ${callStatus==='closed' ? 'rgba(52,211,153,0.5)' : 'rgba(16,185,129,0.22)'}`,
-              color:'#34d399',
-              boxShadow: callStatus==='closed' ? '0 0 20px rgba(16,185,129,0.3)' : 'none',
+              background: callStatus==='agendado' ? 'rgba(16,185,129,0.28)' : 'rgba(16,185,129,0.1)',
+              border:`1px solid ${callStatus==='agendado' ? 'rgba(52,211,153,0.5)' : 'rgba(16,185,129,0.22)'}`,
+              color:'#34d399', textDecoration:'none',
+              boxShadow: callStatus==='agendado' ? '0 0 20px rgba(16,185,129,0.3)' : 'none',
             }}>
-            <CheckCircle2 size={13}/>CERRADO
-          </button>
+            <CheckCircle2 size={13}/>AGENDADO
+          </a>
 
           {/* NO CONTESTA */}
           <button onClick={()=>doStatus('no_answer')} disabled={saving}
@@ -525,16 +510,16 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
             <PhoneMissed size={13}/>NO CONTESTA
           </button>
 
-          {/* NO LO COGE */}
-          <button onClick={()=>doStatus('rejected')} disabled={saving}
+          {/* NO INTERESADO */}
+          <button onClick={()=>doStatus('no_interest')} disabled={saving}
             className="glass-btn flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold"
             style={{
-              background: callStatus==='rejected' ? 'rgba(220,38,38,0.28)' : 'rgba(220,38,38,0.1)',
-              border:`1px solid ${callStatus==='rejected' ? 'rgba(239,68,68,0.5)' : 'rgba(220,38,38,0.22)'}`,
+              background: callStatus==='no_interest' ? 'rgba(220,38,38,0.28)' : 'rgba(220,38,38,0.1)',
+              border:`1px solid ${callStatus==='no_interest' ? 'rgba(239,68,68,0.5)' : 'rgba(220,38,38,0.22)'}`,
               color:'#f87171',
-              boxShadow: callStatus==='rejected' ? '0 0 20px rgba(220,38,38,0.3)' : 'none',
+              boxShadow: callStatus==='no_interest' ? '0 0 20px rgba(220,38,38,0.3)' : 'none',
             }}>
-            <XCircle size={13}/>NO LO COGE
+            <XCircle size={13}/>NO INTERESADO
           </button>
         </div>
 
@@ -563,7 +548,7 @@ function StatStrip({ stats, total }) {
     <div className="flex items-center gap-5">
       {[
         {label:'HOY',       val:total,           color:'rgba(255,255,255,0.55)'},
-        {label:'CERRADOS',  val:stats.closed||0,  color:'#10b981'},
+        {label:'AGENDADOS',  val:stats.closed||0,  color:'#10b981'},
         {label:'PENDIENTES',val:stats.pending||0, color:'rgba(59,130,246,0.8)'},
       ].map(({label,val,color})=>(
         <div key={label} className="flex items-center gap-1.5">
@@ -642,7 +627,7 @@ export default function Dashboard() {
   // Build ordered list: pending/no_answer first, then done
   const ordered = [
     ...(todayData.leads||[]).filter(l=>['pending','no_answer'].includes(l.call_status)),
-    ...(todayData.leads||[]).filter(l=>['closed','rejected'].includes(l.call_status)),
+    ...(todayData.leads||[]).filter(l=>['agendado','no_interest'].includes(l.call_status)),
   ]
   const selected = ordered[selIdx] || null
   const total    = ordered.length
