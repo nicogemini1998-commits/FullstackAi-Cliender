@@ -104,6 +104,23 @@ CREATE TABLE IF NOT EXISTS lu_call_logs (
     called_at     TIMESTAMP DEFAULT NOW()
 );
 
+ALTER TABLE lu_companies ADD COLUMN IF NOT EXISTS attempt_count    INT DEFAULT 0;
+ALTER TABLE lu_companies ADD COLUMN IF NOT EXISTS next_attempt_date DATE;
+ALTER TABLE lu_companies ADD COLUMN IF NOT EXISTS source           VARCHAR(20) DEFAULT 'apify';
+ALTER TABLE lu_companies ADD COLUMN IF NOT EXISTS sector_tag       VARCHAR(50);
+
+CREATE TABLE IF NOT EXISTS lu_daily_assignments (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       UUID REFERENCES lu_users(id) ON DELETE CASCADE,
+    company_id    UUID REFERENCES lu_companies(id) ON DELETE CASCADE,
+    assigned_date DATE    NOT NULL DEFAULT CURRENT_DATE,
+    called        BOOLEAN DEFAULT FALSE,
+    status        VARCHAR(20) DEFAULT 'pending',
+    notes         TEXT,
+    created_at    TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, company_id, assigned_date)
+);
+CREATE INDEX IF NOT EXISTS idx_assignments_user_date ON lu_daily_assignments(user_id, assigned_date);
 CREATE INDEX IF NOT EXISTS idx_companies_enriched ON lu_companies(enriched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_contacts_company   ON lu_contacts(company_id);
 CREATE INDEX IF NOT EXISTS idx_logs_company       ON lu_call_logs(company_id);

@@ -23,14 +23,21 @@ api.interceptors.response.use(
 
 export const auth = {
   login: (email, password) => api.post('/auth/login', { email, password }),
-  me: () => api.get('/auth/me'),
+  me:    () => api.get('/auth/me'),
+}
+
+export const leads = {
+  today:       ()               => api.get('/leads/today'),
+  stats:       ()               => api.get('/leads/today/stats'),
+  updateStatus:(id, status, notes) => api.patch(`/leads/${id}/status`, { status, notes }),
+  assignNow:   ()               => api.post('/leads/assign-now'),
 }
 
 export const companies = {
-  list: (params) => api.get('/companies', { params }),
-  get: (id) => api.get(`/companies/${id}`),
-  stats: () => api.get('/companies/stats'),
-  updateStatus: (id, status, notes, contact_id) =>
+  list:        (params)         => api.get('/companies', { params }),
+  get:         (id)             => api.get(`/companies/${id}`),
+  stats:       ()               => api.get('/companies/stats'),
+  updateStatus:(id, status, notes, contact_id) =>
     api.patch(`/companies/${id}/status`, { status, notes, contact_id }),
 }
 

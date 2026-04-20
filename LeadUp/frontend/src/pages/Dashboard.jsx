@@ -1,223 +1,207 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   TrendingUp, CheckCircle2, XCircle, PhoneMissed, Clock,
-  Search, RefreshCw, LogOut, Loader2, Zap, SlidersHorizontal,
+  RefreshCw, LogOut, Loader2, Zap, ChevronLeft, ChevronRight,
+  Phone, Users, BarChart3,
 } from 'lucide-react'
 import CompanyCard from '../components/CompanyCard'
 import CompanyModal from '../components/CompanyModal'
-import { companies as companiesApi, admin } from '../lib/api'
+import { leads as leadsApi, admin } from '../lib/api'
 import { useAuth } from '../hooks/useAuth.jsx'
 
-function StatCard({ icon: Icon, label, value, accent }) {
+const STATUS_CONFIG = {
+  total:     { label: 'Total hoy',      color: '#60a5fa', bg: 'rgba(59,130,246,0.12)'   },
+  pending:   { label: 'Pendientes',     color: '#f59e0b', bg: 'rgba(245,158,11,0.12)'   },
+  closed:    { label: 'Cerrados',       color: '#34d399', bg: 'rgba(16,185,129,0.12)'   },
+  rejected:  { label: 'No interesados', color: '#f87171', bg: 'rgba(239,68,68,0.12)'    },
+  no_answer: { label: 'Sin contestar',  color: '#9ca3af', bg: 'rgba(107,114,128,0.12)'  },
+}
+
+function ProgressBar({ stats }) {
+  const total = stats.total || 1
+  const done  = (stats.closed || 0) + (stats.rejected || 0) + (stats.no_answer || 0)
+  const pct   = Math.round((done / total) * 100)
   return (
-    <div className="glass-card p-4 flex items-center gap-3.5">
-      <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-        style={{background:accent.bg, border:`1px solid ${accent.border}`,
-          boxShadow:`0 4px 16px ${accent.glow}`}}>
-        <Icon size={16} style={{color:accent.color}}/>
+    <div className="glass-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-semibold text-white">Progreso del día</span>
+        <span className="text-sm font-bold" style={{color:'#34d399'}}>{pct}%</span>
       </div>
-      <div>
-        <p className="text-xl font-bold text-white leading-none">{value ?? '—'}</p>
-        <p className="text-xs mt-0.5" style={{color:'rgba(255,255,255,0.3)'}}>{label}</p>
+      <div className="h-2 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.06)'}}>
+        <div className="h-full rounded-full transition-all duration-500"
+          style={{width:`${pct}%`, background:'linear-gradient(90deg,#3b82f6,#34d399)'}}/>
+      </div>
+      <div className="flex items-center justify-between mt-3 text-xs" style={{color:'rgba(255,255,255,0.4)'}}>
+        <span>{done} llamadas realizadas</span>
+        <span>{(stats.pending || 0)} pendientes</span>
       </div>
     </div>
   )
 }
 
-const STATS_CONFIG = [
-  { key:'total',     label:'Total fichas',    icon:Clock,        accent:{bg:'rgba(59,130,246,0.12)',   border:'rgba(96,165,250,0.2)',   color:'#60a5fa', glow:'rgba(59,130,246,0.2)'}},
-  { key:'closed',    label:'Cerrados',         icon:CheckCircle2, accent:{bg:'rgba(16,185,129,0.12)',   border:'rgba(52,211,153,0.2)',   color:'#34d399', glow:'rgba(16,185,129,0.2)'}},
-  { key:'rejected',  label:'Rechazados',       icon:XCircle,      accent:{bg:'rgba(239,68,68,0.12)',    border:'rgba(248,113,113,0.2)',  color:'#f87171', glow:'rgba(239,68,68,0.2)'}},
-  { key:'no_answer', label:'Sin contestar',    icon:PhoneMissed,  accent:{bg:'rgba(107,114,128,0.12)', border:'rgba(156,163,175,0.2)', color:'#9ca3af', glow:'rgba(107,114,128,0.2)'}},
-]
+function StatPill({ value, label, color, bg }) {
+  return (
+    <div className="flex flex-col items-center py-3 px-4 rounded-2xl" style={{background:bg, border:`1px solid ${color}25`}}>
+      <span className="text-2xl font-bold" style={{color}}>{value ?? 0}</span>
+      <span className="text-xs mt-0.5" style={{color:'rgba(255,255,255,0.4)'}}>{label}</span>
+    </div>
+  )
+}
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
-  const [list, setList]           = useState([])
+  const [todayData, setTodayData] = useState({ leads: [], total: 0, pending: 0 })
   const [stats, setStats]         = useState({})
   const [loading, setLoading]     = useState(true)
-  const [page, setPage]           = useState(1)
-  const [total, setTotal]         = useState(0)
-  const [search, setSearch]       = useState('')
-  const [opportunity, setOpportunity] = useState('')
-  const [triggering, setTriggering] = useState(false)
-  const [trigMsg, setTrigMsg]     = useState('')
   const [modalIdx, setModalIdx]   = useState(null)
-  const LIMIT = 12
+  const [triggering, setTriggering] = useState(false)
+  const [msg, setMsg]             = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [lr, sr] = await Promise.all([
-        companiesApi.list({ page, limit: LIMIT, search: search || undefined, opportunity: opportunity || undefined }),
-        companiesApi.stats(),
-      ])
-      setList(lr.data.data); setTotal(lr.data.total); setStats(sr.data)
+      const [lr, sr] = await Promise.all([leadsApi.today(), leadsApi.stats()])
+      setTodayData(lr.data)
+      setStats(sr.data)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
-  }, [page, search, opportunity])
+  }, [])
 
   useEffect(() => { load() }, [load])
 
-  const triggerEnrichment = async () => {
-    setTriggering(true); setTrigMsg('')
+  const handleAssignNow = async () => {
+    setTriggering(true); setMsg('')
     try {
-      const r = await admin.triggerEnrichment('restaurantes', 'Madrid', 10)
-      setTrigMsg(`✅ ${r.data.saved ?? 0} fichas guardadas`)
+      await leadsApi.assignNow()
+      setMsg('✅ Leads asignados')
       load()
-    } catch { setTrigMsg('❌ Error al lanzar enriquecimiento') }
+    } catch { setMsg('❌ Error al asignar') }
     finally { setTriggering(false) }
   }
 
-  const pages = Math.ceil(total / LIMIT)
+  const handleStatusChange = useCallback(async (assignmentId, status, notes = '') => {
+    try {
+      await leadsApi.updateStatus(assignmentId, status, notes)
+      load()
+    } catch (e) { console.error(e) }
+  }, [load])
+
+  const list = todayData.leads || []
+
+  // Filtrar leads: primero pending y no_answer, luego los demás
+  const pending  = list.filter(l => ['pending', 'no_answer'].includes(l.call_status))
+  const done     = list.filter(l => ['closed', 'rejected'].includes(l.call_status))
+  const ordered  = [...pending, ...done]
 
   return (
     <div className="min-h-screen">
 
       {/* ── Navbar ── */}
       <header className="sticky top-0 z-20"
-        style={{background:'rgba(5,5,8,0.8)', backdropFilter:'blur(20px)',
+        style={{background:'rgba(5,5,8,0.85)', backdropFilter:'blur(20px)',
           borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
-        <div className="max-w-7xl mx-auto px-5 h-14 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-5 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg flex items-center justify-center"
               style={{background:'linear-gradient(135deg,rgba(59,130,246,0.5),rgba(29,78,216,0.35))',
                 border:'1px solid rgba(96,165,250,0.3)',
-                boxShadow:'inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 16px rgba(37,99,235,0.25)'}}>
+                boxShadow:'inset 0 1px 0 rgba(255,255,255,0.2),0 4px 16px rgba(37,99,235,0.25)'}}>
               <TrendingUp size={14} className="text-white"/>
             </div>
             <span className="font-bold text-white text-sm tracking-tight">LeadUp</span>
             <span className="text-xs px-2 py-0.5 rounded-full hidden sm:inline"
-              style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)',
-                color:'rgba(255,255,255,0.4)'}}>
+              style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.35)'}}>
               CRM
             </span>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs hidden sm:block" style={{color:'rgba(255,255,255,0.3)'}}>
-              {user?.name || user?.email}
+          <div className="flex items-center gap-2.5">
+            <span className="text-xs hidden sm:block" style={{color:'rgba(255,255,255,0.35)'}}>
+              {user?.name}
             </span>
-            <button onClick={logout}
-              className="glass-btn glass-btn-neutral flex items-center gap-1.5 text-xs px-3 py-1.5">
-              <LogOut size={12}/>Salir
+            {user?.role === 'admin' && (
+              <button onClick={handleAssignNow} disabled={triggering}
+                className="glass-btn glass-btn-blue flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium">
+                {triggering ? <Loader2 size={12} className="animate-spin"/> : <Zap size={12}/>}
+                {triggering ? 'Asignando...' : 'Asignar leads'}
+              </button>
+            )}
+            <button onClick={load} className="glass-btn glass-btn-neutral p-1.5">
+              <RefreshCw size={13}/>
+            </button>
+            <button onClick={logout} className="glass-btn glass-btn-neutral flex items-center gap-1.5 px-2.5 py-1.5 text-xs">
+              <LogOut size={12}/>
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-5 py-6 space-y-5">
+      <main className="max-w-6xl mx-auto px-5 py-5 space-y-4">
 
-        {/* ── Stats ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {STATS_CONFIG.map(s => (
-            <StatCard key={s.key} icon={s.icon} label={s.label} value={stats[s.key]} accent={s.accent}/>
-          ))}
-        </div>
-
-        {/* ── Toolbar ── */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2"
-              style={{color:'rgba(255,255,255,0.25)'}}/>
-            <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
-              placeholder="Buscar empresa o ciudad..."
-              className="glass-input w-full pl-9 pr-4 py-2.5 text-sm"/>
-          </div>
-
-          <div className="relative">
-            <SlidersHorizontal size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-              style={{color:'rgba(255,255,255,0.25)'}}/>
-            <select value={opportunity} onChange={e => { setOpportunity(e.target.value); setPage(1) }}
-              className="glass-input pl-8 pr-4 py-2.5 text-sm appearance-none cursor-pointer"
-              style={{minWidth:'170px'}}>
-              <option value="">Todas</option>
-              <option value="ALTA">Oportunidad ALTA</option>
-              <option value="MEDIA">Oportunidad MEDIA</option>
-              <option value="BAJA">Oportunidad BAJA</option>
-            </select>
-          </div>
-
-          <button onClick={load}
-            className="glass-btn glass-btn-neutral p-2.5">
-            <RefreshCw size={14}/>
-          </button>
-
-          {user?.role === 'admin' && (
-            <button onClick={triggerEnrichment} disabled={triggering}
-              className="glass-btn glass-btn-blue flex items-center gap-2 px-4 py-2.5 text-sm font-semibold">
-              {triggering ? <Loader2 size={13} className="animate-spin"/> : <Zap size={13}/>}
-              {triggering ? 'Enriqueciendo...' : 'Enriquecer ahora'}
-            </button>
-          )}
-        </div>
-
-        {/* Mensaje trigger */}
-        {trigMsg && (
-          <div className="text-sm px-4 py-3 rounded-2xl"
-            style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
-              color:'rgba(255,255,255,0.6)'}}>
-            {trigMsg}
+        {msg && (
+          <div className="text-sm px-4 py-2.5 rounded-2xl"
+            style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.6)'}}>
+            {msg}
           </div>
         )}
 
-        {/* ── Grid fichas ── */}
+        {/* ── Stats + progreso ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {Object.entries(STATUS_CONFIG).map(([k, cfg]) => (
+            <StatPill key={k} value={stats[k]} label={cfg.label} color={cfg.color} bg={cfg.bg}/>
+          ))}
+        </div>
+
+        <ProgressBar stats={stats}/>
+
+        {/* ── Lista leads del día ── */}
         {loading ? (
-          <div className="flex items-center justify-center py-24">
+          <div className="flex items-center justify-center py-20">
             <div className="flex flex-col items-center gap-3">
               <Loader2 size={28} className="animate-spin" style={{color:'rgba(96,165,250,0.6)'}}/>
-              <p className="text-sm" style={{color:'rgba(255,255,255,0.25)'}}>Cargando fichas...</p>
+              <p className="text-sm" style={{color:'rgba(255,255,255,0.25)'}}>Cargando tu cola de hoy...</p>
             </div>
           </div>
-        ) : list.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="w-16 h-16 rounded-2xl mb-4 flex items-center justify-center"
-              style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.07)'}}>
-              <TrendingUp size={28} style={{color:'rgba(255,255,255,0.15)'}}/>
-            </div>
-            <p className="text-sm font-medium text-white mb-1">Sin fichas todavía</p>
+        ) : ordered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center glass-card">
+            <Phone size={36} className="mb-4 opacity-20 text-white"/>
+            <p className="text-sm font-medium text-white mb-1">Sin leads asignados hoy</p>
             {user?.role === 'admin' && (
-              <p className="text-xs" style={{color:'rgba(255,255,255,0.3)'}}>
-                Pulsa "Enriquecer ahora" para generar las primeras fichas
+              <p className="text-xs mt-1" style={{color:'rgba(255,255,255,0.3)'}}>
+                Pulsa "Asignar leads" para generar la cola de hoy
               </p>
             )}
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {list.map((company, i) => (
-              <CompanyCard key={company.id} company={company}
-                cardIndex={(page-1)*LIMIT+i+1}
-                onClick={() => setModalIdx(i)}/>
+            {ordered.map((lead, i) => (
+              <CompanyCard
+                key={lead.assignment_id || lead.id}
+                company={{...lead, last_call_status: lead.call_status}}
+                cardIndex={i + 1}
+                onClick={() => setModalIdx(i)}
+                assignmentId={lead.assignment_id}
+                isRetry={lead.attempt_count > 0}
+              />
             ))}
-          </div>
-        )}
-
-        {/* ── Paginación ── */}
-        {pages > 1 && (
-          <div className="flex items-center justify-center gap-2 pt-2">
-            <button disabled={page===1} onClick={() => setPage(p => p-1)}
-              className="glass-btn glass-btn-neutral px-4 py-2 text-xs disabled:opacity-30">
-              ← Anterior
-            </button>
-            <span className="text-xs px-3" style={{color:'rgba(255,255,255,0.3)'}}>{page} / {pages}</span>
-            <button disabled={page===pages} onClick={() => setPage(p => p+1)}
-              className="glass-btn glass-btn-neutral px-4 py-2 text-xs disabled:opacity-30">
-              Siguiente →
-            </button>
           </div>
         )}
       </main>
 
-      {/* ── Modal ficha completa ── */}
-      {modalIdx !== null && list[modalIdx] && (
+      {/* ── Modal ── */}
+      {modalIdx !== null && ordered[modalIdx] && (
         <CompanyModal
-          company={list[modalIdx]}
-          cardIndex={(page-1)*LIMIT + modalIdx + 1}
-          total={total}
+          company={{...ordered[modalIdx], last_call_status: ordered[modalIdx].call_status}}
+          cardIndex={modalIdx + 1}
+          total={ordered.length}
+          assignmentId={ordered[modalIdx].assignment_id}
           hasPrev={modalIdx > 0}
-          hasNext={modalIdx < list.length - 1}
+          hasNext={modalIdx < ordered.length - 1}
           onClose={() => setModalIdx(null)}
-          onPrev={() => { if (modalIdx > 0) setModalIdx(v => v - 1) }}
-          onNext={() => { if (modalIdx < list.length - 1) setModalIdx(v => v + 1) }}
+          onPrev={() => setModalIdx(v => v - 1)}
+          onNext={() => setModalIdx(v => v + 1)}
+          onStatusChange={(assignmentId, status, notes) => {
+            handleStatusChange(assignmentId, status, notes)
+          }}
         />
       )}
     </div>
