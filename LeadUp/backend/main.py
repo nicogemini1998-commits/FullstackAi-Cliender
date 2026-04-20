@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 
 from .database import init_pool, close_pool, run_migrations
 from .services.scheduler import start_scheduler, stop_scheduler
-from .routers import auth, companies, admin, apollo, leads
+from .routers import auth, companies, admin, apollo, leads, notes
 
 
 @asynccontextmanager
@@ -46,6 +46,7 @@ app.include_router(companies.router, prefix="/api")
 app.include_router(admin.router,     prefix="/api")
 app.include_router(apollo.router,    prefix="/api")
 app.include_router(leads.router,     prefix="/api")
+app.include_router(notes.router,     prefix="/api")
 
 
 @app.get("/health")

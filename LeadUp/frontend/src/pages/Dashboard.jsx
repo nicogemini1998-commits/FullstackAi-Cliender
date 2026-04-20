@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Phone, PhoneOff, PhoneMissed, CheckCircle2, XCircle,
   RotateCcw, Globe, Link2, Zap, Clock as ClockIcon,
-  BarChart3, Settings, LogOut, Activity, ArrowUp, ArrowDown,
+  BarChart3, Settings, LogOut, Activity, ArrowUp, ArrowDown, FileText,
 } from 'lucide-react'
 import { leads as leadsApi } from '../lib/api'
 import { useAuth } from '../hooks/useAuth.jsx'
 import Pipeline  from './Pipeline.jsx'
 import Analytics from './Analytics.jsx'
 import Ajustes   from './Ajustes.jsx'
+import Notas     from './Notas.jsx'
 
 /* ─── helpers ─────────────────────────────────────────── */
 const parseContacts = (raw) => {
@@ -601,6 +602,7 @@ export default function Dashboard() {
   const NAV = [
     {id:'centralita', label:'Centralita', Icon:Phone},
     {id:'pipeline',   label:'Pipeline',   Icon:BarChart3},
+    {id:'notas',      label:'Notas',      Icon:FileText},
     ...(isAdmin ? [{id:'analytics', label:'Analytics', Icon:Activity}] : []),
     {id:'ajustes',    label:'Ajustes',    Icon:Settings},
   ]
@@ -902,6 +904,7 @@ export default function Dashboard() {
         )}
 
         {view === 'pipeline'  && <Pipeline/>}
+        {view === 'notas'     && <Notas/>}
         {view === 'analytics' && (!isAdmin
           ? <div className="flex-1 flex items-center justify-center">
               <p className="font-mono text-sm" style={{color:'rgba(255,255,255,0.2)'}}>SOLO ADMINISTRADORES</p>
