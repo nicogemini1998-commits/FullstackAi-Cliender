@@ -63,7 +63,7 @@ function QueueItem({ lead, idx, active, onClick }) {
         animationDelay: `${idx*40}ms`,
         borderBottom: '1px solid rgba(255,255,255,0.04)',
         background: active
-          ? 'linear-gradient(90deg,rgba(220,38,38,0.09) 0%,rgba(220,38,38,0.03) 100%)'
+          ? 'linear-gradient(90deg,rgba(59,130,246,0.09) 0%,rgba(220,38,38,0.03) 100%)'
           : 'transparent',
         opacity: done ? 0.48 : 1,
       }}>
@@ -71,7 +71,7 @@ function QueueItem({ lead, idx, active, onClick }) {
       {/* Active bar */}
       {active && (
         <div className="absolute left-0 top-0 bottom-0 w-[2px] rounded-r"
-          style={{background:'var(--accent)',boxShadow:'2px 0 10px var(--accent-glow)'}}/>
+          style={{background:'#3b82f6',boxShadow:'2px 0 10px rgba(59,130,246,0.4)'}}/>
       )}
 
       <div className="px-4 py-3.5 flex items-start gap-3">
@@ -165,7 +165,7 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
       {/* ── Header ── */}
       <div className="shrink-0 px-8 pt-6 pb-4"
         style={{borderBottom:'1px solid rgba(255,255,255,0.05)',
-          background:'linear-gradient(180deg,rgba(220,38,38,0.04) 0%,transparent 100%)'}}>
+          background:'linear-gradient(180deg,rgba(59,130,246,0.04) 0%,transparent 100%)'}}>
         <div className="flex items-start gap-5 justify-between">
           <div className="min-w-0">
             {/* Nav breadcrumb */}
@@ -235,11 +235,11 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
         {/* Opening line */}
         {lead.opening_line && (
           <div className="rounded-2xl p-4"
-            style={{background:'rgba(220,38,38,0.07)',border:'1px solid rgba(220,38,38,0.2)'}}>
+            style={{background:'rgba(59,130,246,0.07)',border:'1px solid rgba(220,38,38,0.2)'}}>
             <div className="flex items-center gap-2 mb-2">
               <div className="w-1.5 h-1.5 rounded-full"
-                style={{background:'var(--accent)',animation:'pulse-green 1.8s infinite'}}/>
-              <span className="font-mono text-xs font-bold" style={{color:'var(--accent)',letterSpacing:'0.1em'}}>
+                style={{background:'#3b82f6',animation:'pulse-green 1.8s infinite'}}/>
+              <span className="font-mono text-xs font-bold" style={{color:'#3b82f6',letterSpacing:'0.1em'}}>
                 APERTURA SUGERIDA
               </span>
             </div>
@@ -258,11 +258,11 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
             {/* Primary DM */}
             {primary ? (
               <div className="rounded-2xl p-4 col-span-1 relative overflow-hidden"
-                style={{background:'rgba(220,38,38,0.06)',border:'1px solid rgba(220,38,38,0.22)'}}>
+                style={{background:'rgba(59,130,246,0.06)',border:'1px solid rgba(59,130,246,0.22)'}}>
                 <div className="absolute top-0 right-0 w-16 h-16 rounded-full -mr-6 -mt-6"
-                  style={{background:'rgba(220,38,38,0.06)',filter:'blur(12px)'}}/>
+                  style={{background:'rgba(59,130,246,0.06)',filter:'blur(12px)'}}/>
                 <p className="font-mono text-xs mb-2.5 font-bold"
-                  style={{color:'var(--accent)',letterSpacing:'0.08em'}}>
+                  style={{color:'#3b82f6',letterSpacing:'0.08em'}}>
                   CONTACTO PRINCIPAL · MÓVIL APOLLO
                 </p>
                 <p className="font-bold text-white text-[15px] mb-0.5">{primary.name||'—'}</p>
@@ -457,7 +457,7 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
             className="glass-btn px-5 py-2.5 text-sm font-bold"
             style={{
               background: callStatus==='rejected' ? 'rgba(220,38,38,0.28)' : 'rgba(220,38,38,0.1)',
-              border:`1px solid ${callStatus==='rejected' ? 'rgba(239,68,68,0.5)' : 'rgba(220,38,38,0.22)'}`,
+              border:`1px solid ${callStatus==='rejected' ? 'rgba(239,68,68,0.5)' : 'rgba(59,130,246,0.22)'}`,
               color:'#f87171',
               boxShadow: callStatus==='rejected' ? '0 0 20px rgba(220,38,38,0.3)' : 'none',
             }}>
@@ -501,7 +501,7 @@ function StatStrip({ stats, total }) {
       {[
         {label:'HOY',       val:total,           color:'rgba(255,255,255,0.55)'},
         {label:'CERRADOS',  val:stats.closed||0,  color:'#10b981'},
-        {label:'PENDIENTES',val:stats.pending||0, color:'rgba(220,38,38,0.8)'},
+        {label:'PENDIENTES',val:stats.pending||0, color:'rgba(59,130,246,0.8)'},
       ].map(({label,val,color})=>(
         <div key={label} className="flex items-center gap-1.5">
           <span className="font-mono text-xs" style={{color:'rgba(255,255,255,0.28)'}}>{label}</span>
@@ -588,15 +588,15 @@ export default function Dashboard() {
         <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
           <div style={{
             width:30, height:30, borderRadius:8,
-            background:'linear-gradient(135deg,rgba(220,38,38,.6),rgba(185,28,28,.4))',
-            border:'1px solid rgba(239,68,68,.35)',
+            background:'linear-gradient(135deg,rgba(59,130,246,.6),rgba(29,78,216,.4))',
+            border:'1px solid rgba(96,165,250,.35)',
             boxShadow:'inset 0 1px 0 rgba(255,255,255,.18),0 4px 14px rgba(220,38,38,.3)',
             display:'flex',alignItems:'center',justifyContent:'center',
           }}>
             <Phone size={13} color="#fff"/>
           </div>
           <span style={{fontWeight:800,fontSize:14,letterSpacing:'0.05em'}}>
-            <span style={{color:'var(--accent)'}}>LEAD</span>
+            <span style={{color:'#3b82f6'}}>LEAD</span>
             <span style={{color:'#fff'}}>UP</span>
             <span style={{color:'rgba(255,255,255,0.22)',fontWeight:400,fontSize:11,marginLeft:6}}>CRM</span>
           </span>
@@ -605,9 +605,9 @@ export default function Dashboard() {
         {/* System status */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:24}}>
           <div style={{
-            width:8, height:8, borderRadius:'50%', background:'var(--accent)',
+            width:8, height:8, borderRadius:'50%', background:'#3b82f6',
             animation:'pulse-red 2s infinite',
-            boxShadow:'0 0 8px var(--accent-glow)',
+            boxShadow:'0 0 8px rgba(59,130,246,0.4)',
           }}/>
           <span className="font-mono text-xs" style={{color:'rgba(255,255,255,0.38)'}}>
             SYSTEM &nbsp;<strong style={{color:'#fff',fontWeight:600}}>OPTIMAL</strong>
