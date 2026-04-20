@@ -6,6 +6,9 @@ import {
 } from 'lucide-react'
 import { leads as leadsApi } from '../lib/api'
 import { useAuth } from '../hooks/useAuth.jsx'
+import Pipeline  from './Pipeline.jsx'
+import Analytics from './Analytics.jsx'
+import Ajustes   from './Ajustes.jsx'
 
 /* ─── helpers ─────────────────────────────────────────── */
 const parseContacts = (raw) => {
@@ -759,17 +762,9 @@ export default function Dashboard() {
           </>
         )}
 
-        {/* Placeholder views */}
-        {view !== 'centralita' && (
-          <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:12}}>
-            {view==='pipeline'  && <BarChart3 size={48} style={{color:'rgba(255,255,255,0.07)'}}/>}
-            {view==='analytics' && <Activity  size={48} style={{color:'rgba(255,255,255,0.07)'}}/>}
-            {view==='ajustes'   && <Settings  size={48} style={{color:'rgba(255,255,255,0.07)'}}/>}
-            <p className="font-mono text-sm tracking-widest" style={{color:'rgba(255,255,255,0.15)'}}>
-              {view.toUpperCase()} — PRÓXIMAMENTE
-            </p>
-          </div>
-        )}
+        {view === 'pipeline'  && <Pipeline/>}
+        {view === 'analytics' && <Analytics/>}
+        {view === 'ajustes'   && <Ajustes/>}
       </div>
 
       {/* spin keyframe inline */}
