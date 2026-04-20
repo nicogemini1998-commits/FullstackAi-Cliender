@@ -47,11 +47,10 @@ async def fetch_leads_for_user(sector_tag: str, city: str, qty: int = 15) -> lis
             if not people:
                 return []
 
-            # Priorizar: tel+email > solo tel > resto
+            # SOLO leads con teléfono — sin excepciones
             prio     = [p for p in people if p.get("has_direct_phone") == "Yes" and p.get("has_email")]
             fallback = [p for p in people if p.get("has_direct_phone") == "Yes" and p not in prio]
-            rest     = [p for p in people if p not in prio and p not in fallback]
-            candidates = (prio + fallback + rest)[:qty]
+            candidates = (prio + fallback)[:qty]
 
             # Enriquecer en lotes de 10 (límite Apollo)
             print(f"   Enriqueciendo {len(candidates)} candidatos en lotes...")
@@ -77,11 +76,33 @@ async def fetch_leads_for_user(sector_tag: str, city: str, qty: int = 15) -> lis
         print(f"   Apollo ERROR en fetch_leads_for_user: {e}")
         return []
 
+    # Sectores competidores a excluir
+    _COMPETITOR_KEYWORDS = [
+        "agencia", "marketing", "publicidad", "seo", "sem", "diseño web",
+        "desarrollo web", "consultora digital", "growth", "performance",
+        "paid media", "social media", "community manager", "branding",
+        "inbound", "outbound", "crm consulting", "salesforce partner",
+    ]
+
+    def _is_competitor(m: dict) -> bool:
+        org = m.get("organization") or {}
+        name = (m.get("organization_name") or org.get("name") or "").lower()
+        industry = (org.get("industry") or "").lower()
+        combined = f"{name} {industry}"
+        return any(kw in combined for kw in _COMPETITOR_KEYWORDS)
+
     results = []
     for m in matches:
         if not m:
             continue
         org = m.get("organization") or {}
+        phone = org.get("phone", "")
+        # Solo leads con teléfono real
+        if not phone:
+            continue
+        # Excluir competidores
+        if _is_competitor(m):
+            continue
         results.append({
             "nombre":     f"{m.get('first_name','')} {m.get('last_name','')}".strip(),
             "cargo":      m.get("title", ""),

@@ -46,11 +46,26 @@ async def get_today_leads(user: dict = Depends(verify_token)):
             uid, today
         )
 
+    import json as _json
+    leads = []
+    for r in rows:
+        d = dict(r)
+        # contacts viene como string JSON de json_agg — parsearlo
+        raw_contacts = d.get("contacts")
+        if isinstance(raw_contacts, str):
+            try:
+                d["contacts"] = _json.loads(raw_contacts)
+            except Exception:
+                d["contacts"] = []
+        elif raw_contacts is None:
+            d["contacts"] = []
+        leads.append(d)
+
     return {
-        "date":  str(today),
-        "total": len(rows),
-        "pending": sum(1 for r in rows if r["call_status"] == "pending"),
-        "leads":  [dict(r) for r in rows],
+        "date":    str(today),
+        "total":   len(leads),
+        "pending": sum(1 for r in leads if r["call_status"] == "pending"),
+        "leads":   leads,
     }
 
 
