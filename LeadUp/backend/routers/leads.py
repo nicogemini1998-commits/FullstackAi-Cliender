@@ -76,11 +76,11 @@ async def today_stats(user: dict = Depends(verify_token)):
         row = await conn.fetchrow(
             """
             SELECT
-                COUNT(*)                                         AS total,
-                COUNT(*) FILTER (WHERE status='pending')        AS pending,
-                COUNT(*) FILTER (WHERE status='closed')         AS closed,
-                COUNT(*) FILTER (WHERE status='rejected')       AS rejected,
-                COUNT(*) FILTER (WHERE status='no_answer')      AS no_answer
+                COUNT(*)                                                                       AS total,
+                COUNT(*) FILTER (WHERE status='pending')                                   AS pending,
+                COUNT(*) FILTER (WHERE status IN ('agendado','closed'))                    AS closed,
+                COUNT(*) FILTER (WHERE status IN ('no_interest','rejected'))               AS rejected,
+                COUNT(*) FILTER (WHERE status='no_answer')                                 AS no_answer
             FROM lu_daily_assignments
             WHERE user_id=$1 AND assigned_date=CURRENT_DATE
             """,
@@ -90,8 +90,34 @@ async def today_stats(user: dict = Depends(verify_token)):
 
 
 class StatusUpdate(BaseModel):
-    status: str          # closed | rejected | no_answer
+    status: str
     notes: str = ""
+
+
+class NotesUpdate(BaseModel):
+    notes: str = ""
+
+
+@router.patch("/{assignment_id}/notes")
+async def save_notes(
+    assignment_id: str,
+    body: NotesUpdate,
+    user: dict = Depends(verify_token),
+):
+    """Guarda las notas sin cambiar el estado."""
+    uid = user.get("id")
+    async with db_conn() as conn:
+        row = await conn.fetchrow(
+            "SELECT id FROM lu_daily_assignments WHERE id=$1 AND user_id=$2",
+            uuid.UUID(assignment_id), uid
+        )
+        if not row:
+            raise HTTPException(404, "Asignación no encontrada")
+        await conn.execute(
+            "UPDATE lu_daily_assignments SET notes=$1 WHERE id=$2",
+            body.notes, uuid.UUID(assignment_id)
+        )
+    return {"ok": True}
 
 
 @router.patch("/{assignment_id}/status")
@@ -100,9 +126,10 @@ async def update_lead_status(
     body: StatusUpdate,
     user: dict = Depends(verify_token),
 ):
-    valid = {"closed", "rejected", "no_answer"}
+    # Nuevos status + los anteriores para compatibilidad
+    valid = {"agendado", "no_interest", "no_answer", "pending", "closed", "rejected"}
     if body.status not in valid:
-        raise HTTPException(400, f"status debe ser: {valid}")
+        raise HTTPException(400, f"status debe ser uno de: {valid}")
 
     uid = user.get("id")
     async with db_conn() as conn:

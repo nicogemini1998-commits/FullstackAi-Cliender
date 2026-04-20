@@ -27,10 +27,11 @@ export const auth = {
 }
 
 export const leads = {
-  today:       ()               => api.get('/leads/today'),
-  stats:       ()               => api.get('/leads/today/stats'),
-  updateStatus:(id, status, notes) => api.patch(`/leads/${id}/status`, { status, notes }),
-  assignNow:   ()               => api.post('/leads/assign-now'),
+  today:       ()                    => api.get('/leads/today'),
+  stats:       ()                    => api.get('/leads/today/stats'),
+  updateStatus:(id, status, notes)   => api.patch(`/leads/${id}/status`, { status, notes }),
+  saveNotes:   (id, notes)           => api.patch(`/leads/${id}/notes`, { notes }),
+  assignNow:   ()                    => api.post('/leads/assign-now'),
 }
 
 export const companies = {

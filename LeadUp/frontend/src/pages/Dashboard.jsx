@@ -112,20 +112,37 @@ function QueueItem({ lead, idx, active, onClick }) {
 
 /* ─── Lead Detail ─────────────────────────────────────── */
 function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
-  const [notes, setNotes]       = useState('')
-  const [callStatus, setStatus] = useState('pending')
-  const [saving, setSaving]     = useState(false)
-  const prevIdRef = useRef(null)
+  const [notes, setNotes]         = useState('')
+  const [callStatus, setStatus]   = useState('pending')
+  const [saving, setSaving]       = useState(false)
+  const [notesSaved, setNotesSaved] = useState(false)
+  const prevIdRef   = useRef(null)
+  const debounceRef = useRef(null)
 
-  // ⚠️ TODOS los hooks ANTES del return condicional
+  // Cargar datos del lead cuando cambia
   useEffect(() => {
     if (!lead) return
     if (prevIdRef.current !== lead.assignment_id) {
       setStatus(lead.call_status || 'pending')
-      setNotes('')
+      setNotes(lead.notes || '')
+      setNotesSaved(false)
       prevIdRef.current = lead.assignment_id
     }
   }, [lead])
+
+  // Auto-save notas con debounce 1.5s
+  useEffect(() => {
+    if (!lead?.assignment_id || !notes) return
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(async () => {
+      try {
+        await leadsApi.saveNotes(lead.assignment_id, notes)
+        setNotesSaved(true)
+        setTimeout(() => setNotesSaved(false), 2000)
+      } catch { /* silencioso */ }
+    }, 1500)
+    return () => clearTimeout(debounceRef.current)
+  }, [notes, lead?.assignment_id])
 
   // Keyboard navigation — ANTES del return condicional
   useEffect(() => {
@@ -466,15 +483,23 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
           ))}
         </div>
 
-        {/* Notes */}
-        <textarea
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
-          placeholder="Notas de la llamada..."
-          rows={2}
-          className="glass-input w-full px-4 py-3 text-sm resize-none"
-          style={{fontFamily:"'DM Mono',monospace"}}
-        />
+        {/* Notes con auto-save */}
+        <div style={{position:'relative'}}>
+          <textarea
+            value={notes}
+            onChange={e => { setNotes(e.target.value); setNotesSaved(false) }}
+            placeholder="Escribe tus notas aquí... se guardan automáticamente"
+            rows={3}
+            className="glass-input w-full px-4 py-3 text-sm resize-none"
+            style={{fontFamily:"'DM Mono',monospace",paddingRight:80}}
+          />
+          <div style={{position:'absolute',bottom:10,right:12,
+            fontFamily:"'DM Mono',monospace",fontSize:10,
+            color: notesSaved ? '#10b981' : 'rgba(255,255,255,0.2)',
+            transition:'color .3s ease'}}>
+            {notesSaved ? '✓ guardado' : notes ? 'guardando...' : ''}
+          </div>
+        </div>
       </div>
 
       {/* ── Action bar — 3 estados centrados + LLAMAR ── */}
