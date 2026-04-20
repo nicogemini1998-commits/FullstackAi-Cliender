@@ -114,6 +114,7 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
   const [saving, setSaving]     = useState(false)
   const prevIdRef = useRef(null)
 
+  // ⚠️ TODOS los hooks ANTES del return condicional
   useEffect(() => {
     if (!lead) return
     if (prevIdRef.current !== lead.assignment_id) {
@@ -123,6 +124,18 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
     }
   }, [lead])
 
+  // Keyboard navigation — ANTES del return condicional
+  useEffect(() => {
+    const fn = (e) => {
+      if (e.target.tagName === 'TEXTAREA') return
+      if (e.key === 'ArrowDown') onNext?.()
+      if (e.key === 'ArrowUp')   onPrev?.()
+    }
+    window.addEventListener('keydown', fn)
+    return () => window.removeEventListener('keydown', fn)
+  }, [onNext, onPrev])
+
+  // Return condicional DESPUÉS de todos los hooks
   if (!lead) return (
     <div className="flex-1 flex items-center justify-center"
       style={{background:'rgba(0,0,0,0.2)'}}>
@@ -147,17 +160,6 @@ function LeadDetail({ lead, idx, total, onStatus, onNext, onPrev }) {
     try { await onStatus(lead.assignment_id, s, notes); setStatus(s) }
     finally { setSaving(false) }
   }
-
-  // Keyboard navigation
-  useEffect(() => {
-    const fn = (e) => {
-      if (e.target.tagName === 'TEXTAREA') return
-      if (e.key === 'ArrowDown') onNext?.()
-      if (e.key === 'ArrowUp')   onPrev?.()
-    }
-    window.addEventListener('keydown', fn)
-    return () => window.removeEventListener('keydown', fn)
-  }, [onNext, onPrev])
 
   return (
     <div key={lead.assignment_id} className="flex-1 flex flex-col min-h-0 anim-scale scan-container">
