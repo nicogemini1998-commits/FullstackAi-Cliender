@@ -255,3 +255,138 @@ body::before {
   background: linear-gradient(90deg, rgba(59,130,246,.08) 0%, transparent 100%) !important;
   border-right: 2px solid var(--accent) !important;
 }
+
+/* ═══════════════════════════════════════════════════
+   LIGHT MODE — overrides completos
+═══════════════════════════════════════════════════ */
+:root.light body {
+  background: #f0f4f8;
+  color: #0f172a;
+}
+:root.light ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); }
+
+/* Topbar */
+:root.light [style*="rgba(4,4,10,0.9"],
+:root.light [style*="rgba(4,4,10,0.92"] {
+  background: rgba(255,255,255,0.92) !important;
+  border-color: rgba(0,0,0,0.08) !important;
+}
+
+/* Nav lateral */
+:root.light [style*="rgba(4,4,10,0.6"] {
+  background: rgba(255,255,255,0.75) !important;
+  border-color: rgba(0,0,0,0.07) !important;
+}
+
+/* Cola / queue */
+:root.light [style*="rgba(4,4,10,0.4"] {
+  background: rgba(255,255,255,0.6) !important;
+  border-color: rgba(0,0,0,0.07) !important;
+}
+
+/* Todos los fondos oscuros genéricos */
+:root.light [style*="rgba(0,0,0,0.2"],
+:root.light [style*="rgba(0,0,0,0.3"],
+:root.light [style*="rgba(0,0,0,0.4"],
+:root.light [style*="rgba(0,0,0,0.5"] {
+  background: rgba(241,245,249,0.9) !important;
+}
+
+/* Cards y paneles glass */
+:root.light .glass-card,
+:root.light [style*="rgba(255,255,255,0.03)"],
+:root.light [style*="rgba(255,255,255,0.02)"],
+:root.light [style*="rgba(255,255,255,0.025)"],
+:root.light [style*="rgba(255,255,255,0.04)"] {
+  background: rgba(255,255,255,0.85) !important;
+  border-color: rgba(0,0,0,0.08) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+}
+
+/* Textos blancos → oscuros */
+:root.light .text-white  { color: #0f172a !important; }
+:root.light [style*="color:'#fff'"],
+:root.light [style*='color:"#fff"'],
+:root.light [style*="color:'white'"] { color: #0f172a !important; }
+
+:root.light [style*="rgba(255,255,255,0.9)"]  { color: #0f172a !important; }
+:root.light [style*="rgba(255,255,255,0.88)"] { color: #0f172a !important; }
+:root.light [style*="rgba(255,255,255,0.7)"]  { color: #334155 !important; }
+:root.light [style*="rgba(255,255,255,0.68)"] { color: #334155 !important; }
+:root.light [style*="rgba(255,255,255,0.6)"]  { color: #475569 !important; }
+:root.light [style*="rgba(255,255,255,0.55)"] { color: #475569 !important; }
+:root.light [style*="rgba(255,255,255,0.5)"]  { color: #64748b !important; }
+:root.light [style*="rgba(255,255,255,0.45)"] { color: #64748b !important; }
+:root.light [style*="rgba(255,255,255,0.4)"]  { color: #94a3b8 !important; }
+:root.light [style*="rgba(255,255,255,0.38)"] { color: #94a3b8 !important; }
+:root.light [style*="rgba(255,255,255,0.35)"] { color: #94a3b8 !important; }
+:root.light [style*="rgba(255,255,255,0.3)"]  { color: #94a3b8 !important; }
+:root.light [style*="rgba(255,255,255,0.28)"] { color: #94a3b8 !important; }
+:root.light [style*="rgba(255,255,255,0.25)"] { color: #b0bec5 !important; }
+:root.light [style*="rgba(255,255,255,0.22)"] { color: #b0bec5 !important; }
+:root.light [style*="rgba(255,255,255,0.2)"]  { color: #b0bec5 !important; }
+:root.light [style*="rgba(255,255,255,0.15)"] { color: #c8d4e0 !important; }
+:root.light [style*="rgba(255,255,255,0.12)"] { color: #c8d4e0 !important; }
+:root.light [style*="rgba(255,255,255,0.1)"]  { color: #d1dce8 !important; }
+
+/* Bordes blancos → grises */
+:root.light [style*="border.*rgba(255,255,255,0.05)"] { border-color: rgba(0,0,0,0.06) !important; }
+:root.light [style*="borderBottom.*rgba(255,255,255"] { border-color: rgba(0,0,0,0.07) !important; }
+:root.light [style*="borderTop.*rgba(255,255,255"]    { border-color: rgba(0,0,0,0.07) !important; }
+:root.light [style*="borderRight.*rgba(255,255,255"]  { border-color: rgba(0,0,0,0.07) !important; }
+
+/* Inputs */
+:root.light .glass-input {
+  background: rgba(255,255,255,0.9) !important;
+  border-color: rgba(0,0,0,0.12) !important;
+  color: #0f172a !important;
+}
+:root.light .glass-input:focus {
+  border-color: rgba(37,99,235,0.5) !important;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1) !important;
+}
+:root.light .glass-input::placeholder { color: #94a3b8 !important; }
+
+/* Glass buttons neutros */
+:root.light .glass-btn-neutral {
+  background: rgba(255,255,255,0.8) !important;
+  border-color: rgba(0,0,0,0.12) !important;
+  color: #334155 !important;
+}
+:root.light .glass-btn-neutral:hover {
+  background: rgba(255,255,255,1) !important;
+  color: #0f172a !important;
+}
+
+/* Nav active */
+:root.light .nav-active {
+  background: linear-gradient(90deg,rgba(37,99,235,0.1) 0%,transparent 100%) !important;
+  color: #2563eb !important;
+  border-right-color: #2563eb !important;
+}
+
+/* Oportunidades */
+:root.light .opp-sales { background: rgba(5,150,105,0.06) !important; border-color: rgba(5,150,105,0.2) !important; }
+:root.light .opp-tech  { background: rgba(37,99,235,0.06) !important;  border-color: rgba(37,99,235,0.2) !important; }
+:root.light .opp-av    { background: rgba(217,119,6,0.06) !important;  border-color: rgba(217,119,6,0.2) !important; }
+
+/* Scan line off en light */
+:root.light .scan-container::after { display: none; }
+
+/* Queue items */
+:root.light .queue-item-anim:hover { background: rgba(37,99,235,0.04) !important; }
+
+/* Activity log */
+:root.light [style*="rgba(0,0,0,0.5)"] {
+  background: rgba(241,245,249,0.9) !important;
+  border-color: rgba(0,0,0,0.07) !important;
+}
+
+/* Bottom mobile nav */
+:root.light [style*="rgba(4,4,10,0.95)"] {
+  background: rgba(255,255,255,0.96) !important;
+  border-color: rgba(0,0,0,0.08) !important;
+}
+
+/* Scrollbar light */
+:root.light ::-webkit-scrollbar-track { background: rgba(0,0,0,0.03); }
