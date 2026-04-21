@@ -1,6 +1,7 @@
 import { Component } from 'react'
-import { AuthProvider } from './hooks/useAuth.jsx'
+import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
 import Dashboard from './pages/Dashboard'
+import Login from './pages/Login'
 
 class ErrorBoundary extends Component {
   state = { error: null }
