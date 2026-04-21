@@ -1520,36 +1520,28 @@ const VideoNode = ({ id, data }) => {
   const [openScenarios, setOpenScenarios] = useState(false)
   const poll = usePoll(5000)
   const m = VIDEO_MODELS[mIdx]
+  // Refs para acceder a valores actuales dentro del useEffect sin stale closure
+  const promptRef   = useRef(prompt)
+  const arRef       = useRef(ar)
+  const durRef      = useRef(dur)
+  const busyRef     = useRef(busy)
+  useEffect(()=>{ promptRef.current = prompt },[prompt])
+  useEffect(()=>{ arRef.current = ar },[ar])
+  useEffect(()=>{ durRef.current = dur },[dur])
+  useEffect(()=>{ busyRef.current = busy },[busy])
 
   useEffect(()=>{ setAr(m.ar[0]); setDur(m.dur[0]||'5'); setKf([]); setRv([]); setRa([]); setVideoUrl(null); setErr(null) },[mIdx])
 
-  // Auto-trigger desde agente o terminal
-  useEffect(()=>{
-    if (!data.incomingPrompt && !data.autoTrigger) return
-    const resolvedPrompt = data.autoPrompt || data.incomingPrompt || prompt
+  // Núcleo de generación — no recibe args de evento
+  const generate = useCallback(async (forcedPrompt, forcedAr, forcedDur, forcedModel) => {
+    const usePrompt = (typeof forcedPrompt === 'string' ? forcedPrompt : null) || promptRef.current
+    if (!usePrompt?.trim() || busyRef.current) return
+    const useAr  = forcedAr  || arRef.current
+    const useDur = forcedDur || durRef.current
+    const useM   = forcedModel
+      ? VIDEO_MODELS.find(v=>v.id===forcedModel) || VIDEO_MODELS[mIdx]
+      : VIDEO_MODELS[mIdx]
 
-    // Aplicar configuración del agente
-    if (data.autoModel) {
-      const idx = VIDEO_MODELS.findIndex(v => v.id === data.autoModel)
-      if (idx >= 0) setMIdx(idx)
-    }
-    if (data.autoAr) setAr(data.autoAr)
-    if (data.autoDuration) setDur(String(data.autoDuration))
-    if (resolvedPrompt) setPrompt(resolvedPrompt)
-
-    // Limpiar flags
-    setNodes(nds=>nds.map(n=>n.id===id?{...n,data:{...n.data,
-      incomingPrompt:null, autoTrigger:false, autoPrompt:null, autoModel:null, autoAr:null, autoDuration:null
-    }}:n))
-
-    if (data.autoTrigger && resolvedPrompt) {
-      setTimeout(()=>handleGenerate(resolvedPrompt), 400)
-    }
-  },[data.incomingPrompt, data.autoTrigger])
-
-  const handleGenerate = async (overridePrompt) => {
-    const usePrompt = overridePrompt || prompt
-    if (!usePrompt?.trim() || busy) return
     setBusy(true); setErr(null); setVideoUrl(null); setProg(0)
 
     const thisNode = getNode(id)
@@ -1560,37 +1552,55 @@ const VideoNode = ({ id, data }) => {
       const r = await fetch(`${SERVER}/api/generate`,{
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
-          model:m.id, prompt:usePrompt, aspectRatio:ar, resolution:res, duration:dur,
-          refImages:kf.map(f=>f.url),
-          refVideos:rv.map(f=>f.url),
-          refAudios:ra.map(f=>f.url),
+          model: useM.id, prompt: usePrompt, aspectRatio: useAr,
+          resolution: res, duration: useDur,
+          refImages: kf.map(f=>f.url),
+          refVideos: rv.map(f=>f.url),
+          refAudios: ra.map(f=>f.url),
           extra:{ generateAudio:genAudio, returnLastFrame:retLast, webSearch, nsfwCheck:nsfw }
         }),
       })
       const json = await r.json()
-      if (!json.data?.taskId && json.code !== 200) throw new Error(json.msg||json.error||'Error al crear tarea')
-      const taskId = json.data?.taskId
-      if (!taskId) throw new Error('Sin taskId en respuesta')
+      const taskId = json.data?.taskId || json.taskId
+      if (!taskId) throw new Error(json.msg || json.error || 'Sin taskId en respuesta')
 
       poll(
         taskId,
         url => {
           setVideoUrl(url); setBusy(false); setProg(100)
-          // Crear ResultVideoNode conectado
           const rvid = `resvid-${Date.now()}`
           addNodes({
-            id: rvid, type: 'resultVideo',
-            position: { x: pos.x + pw + 60, y: pos.y },
-            style: { width: 320, height: 240 },
-            data: { url, prompt: usePrompt, modelLabel: m.label },
+            id: rvid, type:'resultVideo',
+            position:{ x: pos.x + pw + 60, y: pos.y },
+            style:{ width:320, height:240 },
+            data:{ url, prompt: usePrompt, modelLabel: useM.label },
           })
-          addEdges({ id: `e-${id}-${rvid}`, source: id, target: rvid, type: 'gradient' })
+          addEdges({ id:`e-${id}-${rvid}`, source:id, target:rvid, type:'gradient' })
         },
         msg => { setErr(msg); setBusy(false) },
         p => setProg(p)
       )
     } catch(e){ setErr(e.message); setBusy(false) }
-  }
+  }, [id, mIdx, res, kf, rv, ra, genAudio, retLast, webSearch, nsfw, getNode, addNodes, addEdges, poll])
+
+  // Auto-trigger desde agente o terminal
+  useEffect(()=>{
+    if (!data.incomingPrompt && !data.autoTrigger) return
+    const p = data.autoPrompt || data.incomingPrompt || ''
+    if (p) { setPrompt(p); promptRef.current = p }
+    if (data.autoModel) {
+      const idx = VIDEO_MODELS.findIndex(v=>v.id===data.autoModel)
+      if (idx>=0) setMIdx(idx)
+    }
+    if (data.autoAr) { setAr(data.autoAr); arRef.current = data.autoAr }
+    if (data.autoDuration) { setDur(String(data.autoDuration)); durRef.current = String(data.autoDuration) }
+    setNodes(nds=>nds.map(n=>n.id===id?{...n,data:{...n.data,
+      incomingPrompt:null, autoTrigger:false, autoPrompt:null, autoModel:null, autoAr:null, autoDuration:null
+    }}:n))
+    if (data.autoTrigger && p) {
+      setTimeout(()=>generate(p, data.autoAr, data.autoDuration ? String(data.autoDuration) : null, data.autoModel), 400)
+    }
+  },[data.incomingPrompt, data.autoTrigger])
 
   const vidHandles = <>
     <Handle type="target" position={Position.Left}  style={mkHandle('left',  C.video,'video')}/>
@@ -1602,14 +1612,14 @@ const VideoNode = ({ id, data }) => {
       {/* ── Top bar */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
         padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,0.05)',flexShrink:0}}>
-        <button onClick={handleGenerate} disabled={busy||!prompt.trim()}
-          style={{display:'flex',alignItems:'center',gap:5,cursor:'pointer',
+        <button onClick={()=>generate()} disabled={busy||!prompt.trim()}
+          style={{display:'flex',alignItems:'center',gap:5,cursor:busy||!prompt.trim()?'not-allowed':'pointer',
             background:busy?'rgba(167,139,250,0.15)':'rgba(167,139,250,0.12)',
             border:`1px solid rgba(167,139,250,${busy?'0.35':'0.22'})`,
             borderRadius:999,padding:'4px 9px',color:'rgba(255,255,255,0.8)',fontSize:11,fontWeight:600,
-            transition:`all 200ms ${SPRING}`}}>
+            transition:`all 200ms ${SPRING}`,opacity:!prompt.trim()?0.5:1}}>
           {busy
-            ? <><Loader2 style={{width:9,height:9}} className="animate-spin"/> {prog>0?`${prog}%`:'…'}</>
+            ? <><Loader2 style={{width:9,height:9}} className="animate-spin"/> {prog>0?`${prog}%`:'Enviando…'}</>
             : <><Play style={{width:9,height:9,fill:'currentColor',color:C.video}}/> Ejecutar nodo</>}
         </button>
         <span style={{fontSize:11,color:'rgba(255,255,255,0.35)',fontWeight:500}}>{m.label}</span>
