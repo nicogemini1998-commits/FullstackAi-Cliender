@@ -95,13 +95,10 @@ const edgeTypes = { gradient: GradientEdge }
 const QTY = [1,2,4,6,8,10,12,14,16,18,20]
 
 const IMAGE_MODELS = [
-  { id:'nano-banana-2',            label:'Nano Banana 2',   ar:['1:1','4:5','16:9','9:16','4:3','3:2'],        res:['1K','2K','4K'] },
-  { id:'nano-banana-pro',          label:'Nano Banana Pro', ar:['1:1','4:5','2:3','3:2','3:4','4:3','16:9','9:16'], res:['1K','2K','4K'], imgInput:true, maxImg:10 },
-  { id:'flux-2/pro-text-to-image', label:'Flux-2 Pro',      ar:['1:1','4:5','4:3','3:4','16:9','9:16','3:2'],  res:['1K','2K'] },
-  { id:'flux-2/flex-text-to-image',label:'Flux-2 Flex',     ar:['1:1','4:5','4:3','3:4','16:9','9:16','3:2'],  res:['1K','2K'] },
-  { id:'ideogram/v3-text-to-image',label:'Ideogram v3',     ar:['1:1','4:5','4:3','3:4','16:9','9:16'],        res:[] },
-  { id:'qwen/text-to-image',       label:'Qwen',             ar:['1:1','4:5','4:3','16:9','9:16'],             res:[] },
-  { id:'grok-imagine/text-to-image',label:'Grok Imagine',   ar:['1:1','4:5','16:9','9:16'],                   res:[] },
+  // ── Freepik API ─────────────────────────────────────────────────────────────
+  { id:'freepik/text-to-image', label:'Freepik Standard',  ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, freepik:true, sync:true,
+    styles:['photo','digital-art','illustration','3d','painting','anime','pixel-art','watercolor','sketch','low-poly'] },
+  { id:'freepik/mystic',        label:'Freepik Mystic',    ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3','21:9','9:21'], res:[], imgInput:true, maxImg:1, freepik:true, sync:false },
 ]
 
 const VIDEO_MODELS = [
@@ -940,6 +937,7 @@ const ImageNode = ({ id, data }) => {
   const [done, setDone]             = useState(0)
   const [singleUrl, setSingleUrl]   = useState(null)
   const [err, setErr]               = useState(null)
+  const [freepikStyle, setFkStyle]  = useState('photo')
   // Estado del panel Krea-style
   const [openSettings, setOpenSettings]   = useState(false)
   const [selectedStyleId, setSelStyle]    = useState(null)
@@ -1011,28 +1009,64 @@ const ImageNode = ({ id, data }) => {
     }
 
     let completed = 0
+
+    const saveImageToHistory = (url) => {
+      if (url.startsWith('data:')) return // no guardar base64
+      const token = localStorage.getItem('fai_token')
+      if (!token) return
+      fetch(`${SERVER}/api/images`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ url, prompt, model: model.id, aspect_ratio: ar }),
+      }).catch(() => {})
+    }
+
+    const onImageReady = (url) => {
+      completed++; setDone(completed)
+      saveImageToHistory(url)
+      if (effectiveQty === 1) { setSingleUrl(url); if (completed >= effectiveQty) setBusy(false) }
+      else {
+        setNodes(nds => nds.map(n => n.id === galleryId
+          ? { ...n, data: { ...n.data, images: [...(n.data.images||[]), url] } } : n))
+        if (completed >= effectiveQty) setBusy(false)
+      }
+    }
+
+    const onError = (msg) => { setErr(msg); setBusy(false) }
+
     try {
-      await Promise.all(prompts.map((p, i) => (async()=>{
-        const r = await fetch(`${SERVER}/api/generate`,{
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ model:model.id, prompt:p, aspectRatio:ar, resolution:res,
-            refImages: imgIn.map(f=>f.url) }),
-        })
-        const json = await r.json()
-        if (json.code!==200) { completed++; setDone(completed); if(completed>=effectiveQty) setBusy(false); return }
-        poll(json.data.taskId,
-          url => {
-            completed++; setDone(completed)
-            if (effectiveQty===1) { setSingleUrl(url); setBusy(false) }
-            else {
-              setNodes(nds=>nds.map(n=>n.id===galleryId?{...n,data:{...n.data,images:[...(n.data.images||[]),url]}}:n))
-              if (completed>=effectiveQty) setBusy(false)
-            }
-          },
-          msg=>{setErr(msg);setBusy(false)}
-        )
+      await Promise.all(prompts.map((p) => (async () => {
+        // ── Freepik ───────────────────────────────────────────────────────────
+        if (model.freepik) {
+          const r = await fetch(`${SERVER}/api/generate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: model.id, prompt: p, aspectRatio: ar,
+              freepikStyle: model.sync ? freepikStyle : undefined,
+              refImages: imgIn.map(f => f.url),
+            }),
+          })
+          const json = await r.json()
+          if (json.error) return onError(json.error)
+          // Freepik Standard: síncrono, url directa en json.data.url
+          if (json.data?.url) return onImageReady(json.data.url)
+          // Freepik Mystic: asíncrono, taskId con prefijo fk_
+          if (json.data?.taskId) {
+            poll(json.data.taskId, onImageReady, onError)
+          }
+        } else {
+          // ── KIE ─────────────────────────────────────────────────────────────
+          const r = await fetch(`${SERVER}/api/generate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: model.id, prompt: p, aspectRatio: ar, resolution: res,
+              refImages: imgIn.map(f => f.url) }),
+          })
+          const json = await r.json()
+          if (json.code !== 200) { completed++; setDone(completed); if (completed >= effectiveQty) setBusy(false); return }
+          poll(json.data.taskId, onImageReady, onError)
+        }
       })()))
-    } catch(e){ setErr(e.message); setBusy(false) }
+    } catch (e) { onError(e.message) }
   }
 
   const handleGenerate = () => handleGenerateWithBatch(null)
@@ -1312,6 +1346,20 @@ const ImageNode = ({ id, data }) => {
               <DropZone files={[]} onAdd={f=>setImgIn(v=>[...v,f])} onRemove={()=>{}}
                 accept="image/jpeg,image/png,image/webp" hint="JPEG · PNG · WebP · máx 30MB" max={model.maxImg||10}/>
             </div>
+
+            {/* Estilo Freepik (solo para Freepik Standard) */}
+            {model.sync && model.freepik && model.styles && (
+              <NRow dot={C.image} label="Estilo">
+                <select value={freepikStyle} onChange={e=>setFkStyle(e.target.value)}
+                  className="nowheel nopan nodrag"
+                  style={{background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.8)',
+                    border:'1px solid rgba(255,255,255,0.1)',borderRadius:7,
+                    padding:'3px 8px',fontSize:11,outline:'none',cursor:'pointer',
+                    fontFamily:'Plus Jakarta Sans,sans-serif',maxWidth:130}}>
+                  {model.styles.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </NRow>
+            )}
 
             {/* Crudo */}
             <NRow dot="rgba(255,255,255,0.25)" label="Crudo">
@@ -2875,6 +2923,148 @@ function LoginScreen({ onLogin }) {
   )
 }
 
+// ── ImageHistory — panel lateral de imágenes generadas ────────────────────────
+function ImageHistory({ onClose }) {
+  const token = localStorage.getItem('fai_token')
+  const authH = token ? { Authorization: `Bearer ${token}` } : {}
+  const [images, setImages] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [lightbox, setLightbox] = useState(null)
+
+  useEffect(() => {
+    fetch(`${SERVER}/api/images?limit=200`, { headers: authH })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { setImages(d); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
+  const remove = async (id) => {
+    await fetch(`${SERVER}/api/images/${id}`, { method: 'DELETE', headers: authH })
+    setImages(v => v.filter(i => i.id !== id))
+  }
+
+  return (
+    <div style={{
+      position:'fixed', top:0, right:0, bottom:0, width:420, zIndex:200,
+      background:'rgba(6,6,14,0.97)', backdropFilter:'blur(32px)',
+      borderLeft:'1px solid rgba(255,255,255,0.08)',
+      display:'flex', flexDirection:'column',
+      boxShadow:'-12px 0 48px rgba(0,0,0,0.6)',
+    }}>
+      {/* Header */}
+      <div style={{
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        padding:'16px 20px', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0,
+      }}>
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          <ImageIcon size={15} color={C.image}/>
+          <span style={{fontSize:14, fontWeight:700, color:'rgba(255,255,255,0.9)'}}>Mis imágenes</span>
+          {images.length > 0 && (
+            <span style={{
+              fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:999,
+              background:`${C.image}18`, border:`1px solid ${C.image}30`, color:C.image,
+            }}>{images.length}</span>
+          )}
+        </div>
+        <button onClick={onClose} style={{
+          width:28, height:28, borderRadius:'50%', border:'none', cursor:'pointer',
+          background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.5)',
+          display:'flex', alignItems:'center', justifyContent:'center',
+        }}>
+          <X size={13}/>
+        </button>
+      </div>
+
+      {/* Grid */}
+      <div className="nowheel" style={{flex:1, overflowY:'auto', padding:12}}>
+        {loading && (
+          <div style={{display:'flex', justifyContent:'center', padding:40}}>
+            <Loader2 size={20} style={{animation:'spin 1s linear infinite', color:C.image}}/>
+          </div>
+        )}
+        {!loading && images.length === 0 && (
+          <div style={{textAlign:'center', padding:'60px 20px', color:'rgba(255,255,255,0.2)'}}>
+            <ImageIcon size={36} style={{opacity:0.2, marginBottom:12}}/>
+            <p style={{fontSize:12}}>Aún no has generado imágenes</p>
+          </div>
+        )}
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+          {images.map(img => (
+            <div key={img.id} style={{position:'relative', borderRadius:10, overflow:'hidden',
+              border:'1px solid rgba(255,255,255,0.07)', cursor:'pointer', aspectRatio:'1',
+              background:'rgba(255,255,255,0.03)',
+            }}
+              className="group"
+              onClick={() => setLightbox(img)}>
+              <img src={img.url} alt="" loading="lazy"
+                style={{width:'100%', height:'100%', objectFit:'cover', display:'block'}}/>
+              {/* Hover overlay */}
+              <div style={{
+                position:'absolute', inset:0,
+                background:'linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 50%)',
+                opacity:0, transition:'opacity 200ms',
+              }}
+                onMouseEnter={e=>e.currentTarget.style.opacity='1'}
+                onMouseLeave={e=>e.currentTarget.style.opacity='0'}>
+                <div style={{position:'absolute', bottom:8, left:8, right:8}}>
+                  <p style={{fontSize:10, color:'rgba(255,255,255,0.8)', lineHeight:1.4,
+                    overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical'}}>
+                    {img.prompt || '—'}
+                  </p>
+                  <p style={{fontSize:9, color:'rgba(255,255,255,0.4)', marginTop:3}}>
+                    {img.model} · {img.aspect_ratio}
+                  </p>
+                </div>
+                <button
+                  onClick={e=>{ e.stopPropagation(); remove(img.id) }}
+                  style={{
+                    position:'absolute', top:6, right:6,
+                    width:22, height:22, borderRadius:'50%', border:'none', cursor:'pointer',
+                    background:'rgba(239,68,68,0.85)', display:'flex',
+                    alignItems:'center', justifyContent:'center',
+                  }}>
+                  <X size={10} color="white"/>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div style={{
+          position:'fixed', inset:0, zIndex:300,
+          background:'rgba(0,0,0,0.92)', backdropFilter:'blur(8px)',
+          display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12,
+        }}
+          onClick={() => setLightbox(null)}>
+          <img src={lightbox.url} alt="" style={{
+            maxWidth:'80vw', maxHeight:'75vh', borderRadius:12,
+            boxShadow:'0 20px 80px rgba(0,0,0,0.8)',
+          }}/>
+          <div style={{textAlign:'center', maxWidth:480}}>
+            <p style={{fontSize:12, color:'rgba(255,255,255,0.7)', marginBottom:4}}>{lightbox.prompt}</p>
+            <p style={{fontSize:10, color:'rgba(255,255,255,0.3)'}}>
+              {lightbox.model} · {lightbox.aspect_ratio} · {new Date(lightbox.created_at).toLocaleString('es-ES')}
+            </p>
+          </div>
+          <a href={lightbox.url} download target="_blank" rel="noopener noreferrer"
+            onClick={e=>e.stopPropagation()}
+            style={{
+              padding:'8px 20px', borderRadius:20, fontSize:12, fontWeight:600,
+              background:`${C.image}30`, border:`1px solid ${C.image}50`, color:C.image,
+              textDecoration:'none', display:'flex', alignItems:'center', gap:6,
+            }}>
+            <Download size={12}/> Descargar
+          </a>
+        </div>
+      )}
+      <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
+}
+
 export default function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
@@ -2888,6 +3078,7 @@ export default function App() {
   const rfRef = useRef(null)  // ReactFlow instance → getViewport()
   const [showTemplates, setShowTemplates] = useState(false)
   const [showStyles, setShowStyles]       = useState(false)
+  const [showImageHistory, setShowImgHistory] = useState(false)
   const [globalStyleId, setGlobalStyleId] = useState(null)
   const [clearConfirm, setClearConfirm]   = useState(false)
   const [lightboxItem, setLightboxItem]   = useState(null)
@@ -3118,6 +3309,20 @@ export default function App() {
           Estilos
         </button>
 
+        {/* Galería */}
+        <span style={{width:1,height:14,background:'rgba(255,255,255,0.1)',margin:'0 2px'}}/>
+        <button
+          className="glass-btn glass-btn-neutral"
+          style={{padding:'6px 12px',fontSize:12,fontWeight:500,
+            letterSpacing:'-0.01em',display:'flex',alignItems:'center',gap:6,
+            color: showImageHistory ? C.image : 'rgba(96,165,250,0.65)',
+            background: showImageHistory ? 'rgba(59,130,246,0.12)' : undefined,
+          }}
+          onClick={()=>setShowImgHistory(v=>!v)}>
+          <ImageIcon style={{width:13,height:13}}/>
+          Galería
+        </button>
+
         {/* Separador + usuario + logout */}
         <span style={{width:1,height:14,background:'rgba(255,255,255,0.1)',margin:'0 2px'}}/>
         <span style={{fontSize:11,color:'rgba(255,255,255,0.28)',padding:'0 4px 0 6px',fontWeight:500}}>
@@ -3202,6 +3407,15 @@ export default function App() {
             isAdmin={isAdmin}
           />
           <div onClick={()=>setShowStyles(false)}
+            style={{position:'fixed',inset:0,zIndex:190,background:'rgba(0,0,0,0.3)',backdropFilter:'blur(2px)'}}/>
+        </>
+      )}
+
+      {/* Panel Galería de imágenes */}
+      {showImageHistory && (
+        <>
+          <ImageHistory onClose={()=>setShowImgHistory(false)}/>
+          <div onClick={()=>setShowImgHistory(false)}
             style={{position:'fixed',inset:0,zIndex:190,background:'rgba(0,0,0,0.3)',backdropFilter:'blur(2px)'}}/>
         </>
       )}

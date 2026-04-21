@@ -65,6 +65,16 @@ async function initSchema() {
       edges JSONB DEFAULT '[]',
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
+    CREATE TABLE IF NOT EXISTS user_images (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      prompt TEXT DEFAULT '',
+      model TEXT DEFAULT '',
+      aspect_ratio TEXT DEFAULT '1:1',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_images_user ON user_images(user_id, created_at DESC);
   `)
   // Agente /shaq — crear o actualizar con el system_prompt nuevo
   const shaqPrompt = `You are /shaq, a creative UGC and marketing specialist. You ONLY respond with valid JSON, no other text.
@@ -398,6 +408,37 @@ app.post('/api/agent/run', requireAuth, async (req, res) => {
   }
 })
 
+// ─── GALERÍA — historial de imágenes por usuario ─────────────────────────────
+app.post('/api/images', requireAuth, async (req, res) => {
+  if (!dbReady) return res.json({ ok: true })
+  const { url, prompt, model, aspect_ratio } = req.body
+  if (!url) return res.status(400).json({ error: 'url requerida' })
+  // No guardar base64 (demasiado pesado) — solo URLs externas
+  if (url.startsWith('data:')) return res.json({ ok: true, skipped: true })
+  await db.query(
+    'INSERT INTO user_images(user_id, url, prompt, model, aspect_ratio) VALUES($1,$2,$3,$4,$5)',
+    [req.user.id, url, prompt||'', model||'', aspect_ratio||'1:1']
+  )
+  res.json({ ok: true })
+})
+
+app.get('/api/images', requireAuth, async (req, res) => {
+  if (!dbReady) return res.json([])
+  const limit = Math.min(parseInt(req.query.limit)||100, 500)
+  const offset = parseInt(req.query.offset)||0
+  const { rows } = await db.query(
+    'SELECT id, url, prompt, model, aspect_ratio, created_at FROM user_images WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+    [req.user.id, limit, offset]
+  )
+  res.json(rows)
+})
+
+app.delete('/api/images/:id', requireAuth, async (req, res) => {
+  if (!dbReady) return res.json({ ok: true })
+  await db.query('DELETE FROM user_images WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id])
+  res.json({ ok: true })
+})
+
 // ─── CANVAS — auto-save/load por usuario ─────────────────────────────────────
 app.get('/api/canvas', requireAuth, async (req, res) => {
   if (!dbReady) return res.json({ nodes: [], edges: [] })
@@ -574,6 +615,68 @@ app.post('/api/generate', async (req, res) => {
   if (auds.length) console.log(`   audURLs: ${JSON.stringify(auds)}`)
 
   try {
+    // ── Freepik — imagen ──────────────────────────────────────────────────────
+    if (model.startsWith('freepik/')) {
+      if (!FREEPIK_KEY) return res.status(503).json({ error: 'FREEPIK_API_KEY no configurada' })
+
+      // Mapeo de aspect ratio a los formatos de Freepik
+      const fkSizeMap = {
+        '1:1':'square','4:3':'landscape_4_3','3:4':'portrait_3_4',
+        '16:9':'widescreen','9:16':'portrait_9_16','3:2':'classic_3_2','2:3':'portrait_2_3',
+        '21:9':'film_21_9','9:21':'film_9_21',
+      }
+      const fkAspectMap = {
+        '1:1':'square_1_1','4:3':'classic_4_3','3:4':'traditional_3_4',
+        '16:9':'widescreen_16_9','9:16':'social_story_9_16','3:2':'standard_3_2','2:3':'portrait_2_3',
+        '21:9':'film_horizontal_21_9','9:21':'film_vertical_9_21',
+      }
+
+      if (model === 'freepik/text-to-image') {
+        // Síncrono — devuelve base64 directamente
+        const body = {
+          prompt,
+          num_images: 1,
+          image: { size: fkSizeMap[aspectRatio] || 'square' },
+        }
+        const freepikStyle = req.body.freepikStyle
+        if (freepikStyle) body.styling = { style: freepikStyle }
+
+        const r = await fetch(`${FREEPIK_BASE}/ai/text-to-image`, {
+          method: 'POST',
+          headers: { 'x-freepik-api-key': FREEPIK_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const d = await r.json()
+        if (!r.ok) return res.json({ error: d.message || 'Error Freepik' })
+        const b64 = d.data?.[0]?.base64
+        if (!b64) return res.json({ error: 'Sin imagen en respuesta Freepik' })
+        // Convertir base64 a data URL
+        const url = `data:image/jpeg;base64,${b64}`
+        return res.json({ code: 200, data: { url } })
+      }
+
+      if (model === 'freepik/mystic') {
+        // Asíncrono — devuelve task_id con prefijo fk_
+        const body = {
+          prompt,
+          num_images: 1,
+          aspect_ratio: fkAspectMap[aspectRatio] || 'square_1_1',
+        }
+        if (imgs.length) body.image_reference = { url: imgs[0], strength: 0.7 }
+
+        const r = await fetch(`${FREEPIK_BASE}/ai/mystic`, {
+          method: 'POST',
+          headers: { 'x-freepik-api-key': FREEPIK_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const d = await r.json()
+        if (!r.ok) return res.json({ error: d.message || 'Error Freepik Mystic' })
+        const taskId = d.data?.task_id
+        if (!taskId) return res.json({ error: 'Sin task_id en respuesta Freepik' })
+        return res.json({ code: 200, data: { taskId: `fk_${taskId}` } })
+      }
+    }
+
     // Veo3 — endpoint diferente
     if (['veo3', 'veo3_fast', 'veo3_lite'].includes(model)) {
       const body = {
@@ -664,6 +767,28 @@ app.post('/api/generate', async (req, res) => {
 app.get('/api/task/:taskId', async (req, res) => {
   const { taskId } = req.params
   try {
+    // Freepik Mystic — polling con prefijo fk_
+    if (taskId.startsWith('fk_')) {
+      if (!FREEPIK_KEY) return res.status(503).json({ error: 'FREEPIK_API_KEY no configurada' })
+      const realId = taskId.slice(3)
+      const r = await fetch(`${FREEPIK_BASE}/ai/mystic/${realId}`, {
+        headers: { 'x-freepik-api-key': FREEPIK_KEY },
+      })
+      const d = await r.json()
+      console.log(`Freepik Mystic poll (${realId}) → status:${d.data?.status}`)
+      const status = d.data?.status
+      const generated = d.data?.generated || []
+      if (status === 'COMPLETED' && generated.length) {
+        // Mystic devuelve URLs directas (no base64)
+        const url = generated[0].url
+        return res.json({ code: 200, data: { state: 'success', resultJson: JSON.stringify({ resultUrls: [url] }) } })
+      }
+      if (status === 'FAILED') {
+        return res.json({ code: 200, data: { state: 'fail', failMsg: 'Freepik Mystic falló' } })
+      }
+      return res.json({ code: 200, data: { state: 'generating', progress: 0 } })
+    }
+
     // KREA models — polling con API de KREA
     if (taskId.startsWith('krea_')) {
       const KREA_API_KEY = process.env.KREA_API_KEY
