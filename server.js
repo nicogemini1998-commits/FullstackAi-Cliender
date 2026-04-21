@@ -903,29 +903,34 @@ app.get('/api/task/:taskId', async (req, res) => {
       headers: { Authorization: `Bearer ${KIE_KEY}` },
     })
     const json = await r.json()
-    console.log(`KIE poll (${taskId}) →`, JSON.stringify(json).slice(0, 400))
-    const d = json.data || {}
+    console.log(`KIE poll (${taskId}) →`, JSON.stringify(json).slice(0, 300))
+
+    // KIE devuelve 422 / data null → error definitivo, no seguir polling
+    if (json.code !== 200 || !json.data) {
+      return res.json({ code:200, data:{ state:'fail',
+        failMsg: json.msg || `KIE error ${json.code}` } })
+    }
+
+    const d = json.data
     const state = d.state || (d.successFlag===1?'success':d.successFlag>=2?'fail':'generating')
 
     if (state === 'success') {
-      // Extraer URL del video de resultJson (varios formatos posibles)
       let resultUrls = []
       try {
         const rj = typeof d.resultJson==='string' ? JSON.parse(d.resultJson||'{}') : (d.resultJson||{})
         if (rj.resultUrls) resultUrls = Array.isArray(rj.resultUrls) ? rj.resultUrls : [rj.resultUrls]
         else if (rj.resultUrl) resultUrls = [rj.resultUrl]
-        else if (rj.url) resultUrls = [rj.url]
-        else if (rj.videoUrl) resultUrls = [rj.videoUrl]
-        // Seedance puede tener el url directo en data
+        else if (rj.url)       resultUrls = [rj.url]
+        else if (rj.videoUrl)  resultUrls = [rj.videoUrl]
         if (!resultUrls.length && d.resultUrl) resultUrls = [d.resultUrl]
-        if (!resultUrls.length && d.videoUrl) resultUrls = [d.videoUrl]
+        if (!resultUrls.length && d.videoUrl)  resultUrls = [d.videoUrl]
       } catch { if (d.resultUrl) resultUrls = [d.resultUrl] }
-
       return res.json({ code:200, data:{ state:'success',
         resultJson: JSON.stringify({ resultUrls }) } })
     }
     if (state === 'fail') {
-      return res.json({ code:200, data:{ state:'fail', failMsg: d.failMsg || d.message || 'Generación fallida' } })
+      return res.json({ code:200, data:{ state:'fail',
+        failMsg: d.failMsg || d.message || 'Generación fallida' } })
     }
     return res.json({ code:200, data:{ state:'generating', progress: d.progress || 0 } })
   } catch (err) {

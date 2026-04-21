@@ -468,25 +468,36 @@ const GenBtn = ({ onClick, disabled, busy, label, color='violet' }) => (
 )
 
 // ── Polling helper ─────────────────────────────────────────────────────────────
+const MAX_POLL_ATTEMPTS = 180  // 15 min max (180 × 5s)
+
 const usePoll = (delay=3500) => {
   const refs = useRef([])
   useEffect(() => () => refs.current.forEach(clearTimeout), [])
 
-  const poll = useCallback((taskId, onSuccess, onFail, onProgress) => {
+  const poll = useCallback((taskId, onSuccess, onFail, onProgress, attempt=0) => {
+    if (attempt >= MAX_POLL_ATTEMPTS) {
+      onFail('Tiempo de espera agotado — la tarea tardó demasiado')
+      return
+    }
     const t = setTimeout(async () => {
       try {
         const r = await fetch(`${SERVER}/api/task/${taskId}`)
+        if (!r.ok) { onFail(`Error HTTP ${r.status}`); return }
         const json = await r.json()
         const d = json.data
-        if (!d) { onFail('Respuesta inválida'); return }
-        onProgress?.(d.progress||0)
-        if (d.state==='success') {
-          const res = JSON.parse(d.resultJson||'{}')
-          onSuccess(res.resultUrls?.[0]||res.resultObject)
-        } else if (d.state==='fail') {
-          onFail(d.failMsg||'Generación fallida')
-        } else { poll(taskId, onSuccess, onFail, onProgress) }
-      } catch { onFail('Error consultando tarea') }
+        if (!d) { onFail(json.msg || 'Sin datos en respuesta'); return }
+        onProgress?.(d.progress || 0)
+        if (d.state === 'success') {
+          const parsed = JSON.parse(d.resultJson || '{}')
+          const url = parsed.resultUrls?.[0] || parsed.resultObject
+          if (!url) { onFail('Generación completada pero sin URL de resultado'); return }
+          onSuccess(url)
+        } else if (d.state === 'fail') {
+          onFail(d.failMsg || 'Generación fallida')
+        } else {
+          poll(taskId, onSuccess, onFail, onProgress, attempt + 1)
+        }
+      } catch(e) { onFail(`Error de red: ${e.message}`) }
     }, delay)
     refs.current.push(t)
   }, [delay])
