@@ -930,6 +930,62 @@ const ResultImageNode = ({ id, data }) => {
   )
 }
 
+// ── ResultVideoNode — nodo resultado de video generado ────────────────────────
+const ResultVideoNode = ({ id, data }) => {
+  const { deleteElements } = useReactFlow()
+  const handles = <>
+    <Handle type="target" position={Position.Left}  style={mkHandle('left',  C.video,'video')}/>
+    <Handle type="source" position={Position.Right} style={mkHandle('right', C.video,'video')}/>
+  </>
+  return (
+    <Shell hex={C.video} minW={260} minH={200} handles={handles}>
+      <div style={{flex:1, position:'relative', overflow:'hidden', display:'flex', flexDirection:'column'}}>
+        {data.url ? (
+          <>
+            <video src={data.url} controls autoPlay loop muted
+              style={{width:'100%', display:'block', flex:1, objectFit:'cover'}}/>
+            <div style={{
+              padding:'6px 10px', background:'rgba(0,0,0,0.4)', flexShrink:0,
+              display:'flex', alignItems:'center', justifyContent:'space-between', gap:6,
+            }}>
+              <span style={{fontSize:10, color:'rgba(255,255,255,0.45)',
+                overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1}}>
+                {data.modelLabel || 'Video KIE'}
+              </span>
+              <div style={{display:'flex', gap:4, flexShrink:0}}>
+                <button onClick={()=>Bus.emit('openLightbox',{url:data.url,type:'video'})}
+                  style={{width:24, height:24, borderRadius:6, cursor:'pointer', border:'none',
+                    background:'rgba(255,255,255,0.08)', color:'rgba(255,255,255,0.6)',
+                    display:'flex', alignItems:'center', justifyContent:'center'}}>
+                  <Play size={10}/>
+                </button>
+                <button onClick={()=>downloadFile(data.url,'mp4')}
+                  style={{width:24, height:24, borderRadius:6, cursor:'pointer', border:'none',
+                    background:'rgba(255,255,255,0.08)', color:'rgba(255,255,255,0.6)',
+                    display:'flex', alignItems:'center', justifyContent:'center'}}>
+                  <Download size={10}/>
+                </button>
+                <button onClick={()=>deleteElements({nodes:[{id}]})}
+                  style={{width:24, height:24, borderRadius:6, cursor:'pointer', border:'none',
+                    background:'rgba(239,68,68,0.12)', color:'rgba(239,68,68,0.7)',
+                    display:'flex', alignItems:'center', justifyContent:'center'}}>
+                  <X size={10}/>
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center',
+            justifyContent:'center', gap:8, color:'rgba(255,255,255,0.2)'}}>
+            <Loader2 size={20} style={{color:`${C.video}80`, animation:'spin 1s linear infinite'}}/>
+            <span style={{fontSize:10}}>Generando video…</span>
+          </div>
+        )}
+      </div>
+    </Shell>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ── ImageNode
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1014,6 +1070,8 @@ const ImageNode = ({ id, data }) => {
         style: { width: gW, height: gH },
         data: { images: [], total: effectiveQty, modelLabel: model.label },
       })
+      // Edge ImageNode → GalleryNode
+      addEdges({ id: `e-${id}-${galleryId}`, source: id, target: galleryId, type: 'gradient' })
     }
 
     let completed = 0
@@ -1033,8 +1091,18 @@ const ImageNode = ({ id, data }) => {
     const onImageReady = (url) => {
       completed++; setDone(completed)
       saveImageToHistory(url)
-      if (effectiveQty === 1) { setSingleUrl(url); if (completed >= effectiveQty) setBusy(false) }
-      else {
+      if (effectiveQty === 1) {
+        setSingleUrl(url)
+        // Crear ResultImageNode conectado al ImageNode
+        const rid = `result-${Date.now()}`
+        addNodes({ id: rid, type: 'resultImage',
+          position: { x: pos.x + pw + 60, y: pos.y },
+          style: { width: 200, height: 200 },
+          data: { url, prompt },
+        })
+        addEdges({ id: `e-${id}-${rid}`, source: id, target: rid, type: 'gradient' })
+        if (completed >= effectiveQty) setBusy(false)
+      } else {
         setNodes(nds => nds.map(n => n.id === galleryId
           ? { ...n, data: { ...n.data, images: [...(n.data.images||[]), url] } } : n))
         if (completed >= effectiveQty) setBusy(false)
@@ -1432,7 +1500,7 @@ const ImageNode = ({ id, data }) => {
 // ── VideoNode
 // ══════════════════════════════════════════════════════════════════════════════
 const VideoNode = ({ id, data }) => {
-  const { setNodes } = useReactFlow()
+  const { setNodes, getNode, addNodes, addEdges } = useReactFlow()
   const [mIdx,  setMIdx]  = useState(0)
   const [prompt,setPrompt]= useState('')
   const [ar,    setAr]    = useState('16:9')
@@ -1455,32 +1523,71 @@ const VideoNode = ({ id, data }) => {
 
   useEffect(()=>{ setAr(m.ar[0]); setDur(m.dur[0]||'5'); setKf([]); setRv([]); setRa([]); setVideoUrl(null); setErr(null) },[mIdx])
 
-  // Reaccionar a prompt desde terminal conectada
+  // Auto-trigger desde agente o terminal
   useEffect(()=>{
-    if (data.incomingPrompt) {
-      setPrompt(data.incomingPrompt)
-      setNodes(nds=>nds.map(n=>n.id===id?{...n,data:{...n.data,incomingPrompt:null}}:n))
-    }
-  },[data.incomingPrompt])
+    if (!data.incomingPrompt && !data.autoTrigger) return
+    const resolvedPrompt = data.autoPrompt || data.incomingPrompt || prompt
 
-  const handleGenerate = async () => {
-    if (!prompt.trim()||busy) return
+    // Aplicar configuración del agente
+    if (data.autoModel) {
+      const idx = VIDEO_MODELS.findIndex(v => v.id === data.autoModel)
+      if (idx >= 0) setMIdx(idx)
+    }
+    if (data.autoAr) setAr(data.autoAr)
+    if (data.autoDuration) setDur(String(data.autoDuration))
+    if (resolvedPrompt) setPrompt(resolvedPrompt)
+
+    // Limpiar flags
+    setNodes(nds=>nds.map(n=>n.id===id?{...n,data:{...n.data,
+      incomingPrompt:null, autoTrigger:false, autoPrompt:null, autoModel:null, autoAr:null, autoDuration:null
+    }}:n))
+
+    if (data.autoTrigger && resolvedPrompt) {
+      setTimeout(()=>handleGenerate(resolvedPrompt), 400)
+    }
+  },[data.incomingPrompt, data.autoTrigger])
+
+  const handleGenerate = async (overridePrompt) => {
+    const usePrompt = overridePrompt || prompt
+    if (!usePrompt?.trim() || busy) return
     setBusy(true); setErr(null); setVideoUrl(null); setProg(0)
+
+    const thisNode = getNode(id)
+    const pos = thisNode?.position || { x:0, y:0 }
+    const pw  = thisNode?.measured?.width  || 380
+
     try {
       const r = await fetch(`${SERVER}/api/generate`,{
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ model:m.id, prompt, aspectRatio:ar, resolution:res, duration:dur,
+        body: JSON.stringify({
+          model:m.id, prompt:usePrompt, aspectRatio:ar, resolution:res, duration:dur,
           refImages:kf.map(f=>f.url),
           refVideos:rv.map(f=>f.url),
           refAudios:ra.map(f=>f.url),
-          extra:{ generateAudio:genAudio, returnLastFrame:retLast, webSearch, nsfwCheck:nsfw } }),
+          extra:{ generateAudio:genAudio, returnLastFrame:retLast, webSearch, nsfwCheck:nsfw }
+        }),
       })
       const json = await r.json()
-      if (json.code!==200) throw new Error(json.msg||'Error al crear tarea')
-      poll(json.data.taskId,
-        url=>{ setVideoUrl(url); setBusy(false); setProg(100) },
-        msg=>{ setErr(msg); setBusy(false) },
-        p=>setProg(p)
+      if (!json.data?.taskId && json.code !== 200) throw new Error(json.msg||json.error||'Error al crear tarea')
+      const taskId = json.data?.taskId
+      if (!taskId) throw new Error('Sin taskId en respuesta')
+
+      poll(
+        taskId,
+        url => {
+          setVideoUrl(url); setBusy(false); setProg(100)
+          // Crear ResultVideoNode conectado
+          const rvid = `resvid-${Date.now()}`
+          addNodes({
+            id: rvid, type: 'resultVideo',
+            position: { x: pos.x + pw + 60, y: pos.y },
+            style: { width: 320, height: 240 },
+            data: { url, prompt: usePrompt, modelLabel: m.label },
+          })
+          addEdges({ id: `e-${id}-${rvid}`, source: id, target: rvid, type: 'gradient' })
+        },
+        msg => { setErr(msg); setBusy(false) },
+        p => setProg(p)
       )
     } catch(e){ setErr(e.message); setBusy(false) }
   }
@@ -2764,6 +2871,7 @@ const nodeTypes = {
   image:       ImageNode,
   video:       VideoNode,
   resultImage: ResultImageNode,
+  resultVideo: ResultVideoNode,
   galleryNode: GalleryNode,
   note:        NoteNode,
   promptList:  PromptListNode,
