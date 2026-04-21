@@ -628,17 +628,34 @@ export default function Dashboard() {
     return () => window.removeEventListener('resize', fn)
   }, [])
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (autoLoad = false) => {
     setLoading(true)
     try {
       const [lr, sr] = await Promise.all([leadsApi.today(), leadsApi.stats()])
       setTodayData(lr.data)
       setStats(sr.data)
+
+      // Auto-load 10+ leads on initial mount if queue is empty
+      if (autoLoad && (lr.data.leads || []).length < 10) {
+        try {
+          await leadsApi.requestMore()
+          const refreshed = await leadsApi.today()
+          setTodayData(refreshed.data)
+        } catch (e) {
+          console.error('Auto-load leads failed:', e)
+        }
+      }
     } catch(e) { console.error('load error', e) }
     finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  const initialLoadRef = useRef(false)
+  useEffect(() => {
+    if (!initialLoadRef.current) {
+      initialLoadRef.current = true
+      load(true)  // Pass true to auto-load leads on mount
+    }
+  }, [load])
 
   const handleAssign = async () => {
     setAssigning(true)
@@ -661,6 +678,12 @@ export default function Dashboard() {
     finally { setRequesting(false) }
   }
 
+  // Build ordered list: pending/no_answer first, then done
+  const ordered = [
+    ...(todayData.leads||[]).filter(l=>['pending','no_answer'].includes(l.call_status)),
+    ...(todayData.leads||[]).filter(l=>['agendado','no_interest'].includes(l.call_status)),
+  ]
+
   // Cola vacía: todos pendientes/done o 0 leads
   const doneSts = new Set(['agendado','no_interest'])
   const doneCount = ordered.filter(x => doneSts.has(x.call_status)).length
@@ -672,11 +695,6 @@ export default function Dashboard() {
     await load()
   }, [load])
 
-  // Build ordered list: pending/no_answer first, then done
-  const ordered = [
-    ...(todayData.leads||[]).filter(l=>['pending','no_answer'].includes(l.call_status)),
-    ...(todayData.leads||[]).filter(l=>['agendado','no_interest'].includes(l.call_status)),
-  ]
   const selected = ordered[selIdx] || null
   const total    = ordered.length
 

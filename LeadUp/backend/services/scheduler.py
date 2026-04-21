@@ -1,17 +1,17 @@
 from __future__ import annotations
 import random
+import uuid
 from datetime import date, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from ..config import get_settings
 from ..database import db_conn
-from .apollo_leads import fetch_leads_for_user, save_lead_to_db, CLIENDER_SECTORS
+from .dummy_leads import generate_leads_for_user
 
 _scheduler: AsyncIOScheduler | None = None
 
-LEADS_PER_USER  = 15   # leads nuevos por usuario/día
-MAX_PER_SESSION = 20   # máximo leads por sesión (nunca superar)
+LEADS_PER_USER  = 100  # leads nuevos por usuario/día
+MAX_PER_SESSION = 10000  # máximo leads por sesión
 RETRY_AFTER_DAYS = 3   # reintentar no_answer tras X días
 MAX_RETRIES     = 3    # máx intentos antes de descartar
 
@@ -84,9 +84,8 @@ async def _daily_assignment():
     Corre cada día a las 8am.
     Por cada comercial activo:
       1. Reintentos no_answer pendientes (hasta 3)
-      2. Leads nuevos de Apollo (sectores rotativos CLIENDER)
+      2. Leads nuevos (dummy para demo)
     """
-    s = get_settings()
     users = await _get_active_commercials()
     if not users:
         print("⏰ Scheduler: sin comerciales activos")
@@ -94,12 +93,7 @@ async def _daily_assignment():
 
     print(f"⏰ Scheduler diario: {len(users)} comerciales")
 
-    # Rotación: cualquier nicho + cualquier ciudad de España
-    day = date.today().toordinal()
-    today_sector = CLIENDER_SECTORS[day % len(CLIENDER_SECTORS)]
-    city         = _SPAIN_CITIES[day % len(_SPAIN_CITIES)]
-
-    # Cada usuario recibe su propio fetch de leads (ciudad diferente para variedad)
+    # Cada usuario recibe leads
     for idx, user in enumerate(users):
         uid  = str(user["id"])
         name = user["name"]
@@ -126,24 +120,46 @@ async def _daily_assignment():
                     cid
                 )
 
-        # Fetch independiente — ciudad rotada por usuario para variedad
-        city_idx     = (day + idx) % len(_SPAIN_CITIES)
-        user_city    = _SPAIN_CITIES[city_idx]
-        sector_idx   = (day + idx) % len(CLIENDER_SECTORS)
-        user_sector  = CLIENDER_SECTORS[sector_idx]
-        slots        = min(LEADS_PER_USER - len(retries), can_add - len(retries))
-
-        print(f"   {name}: buscando {slots} leads en {user_sector['tag']}/{user_city}...")
-        raw = await fetch_leads_for_user(user_sector["tag"], user_city, qty=slots + 5)
+        # Generar leads dummy
+        slots = min(LEADS_PER_USER - len(retries), can_add - len(retries))
+        dummy_leads = await generate_leads_for_user(slots + 5)
 
         batch = []
-        for lead in raw:
-            if len(batch) >= slots:
-                break
-            cid = await save_lead_to_db(lead)
-            if cid and not await _already_assigned(cid):
-                await _assign_to_user(uid, cid)
-                batch.append(cid)
+        async with db_conn() as conn:
+            for lead in dummy_leads:
+                if len(batch) >= slots:
+                    break
+
+                # Inserta company
+                cid = str(lead["id"])
+                try:
+                    await conn.execute(
+                        """
+                        INSERT INTO lu_companies (id, name, website, sector, city, digital_score, opportunity_level, summary)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                        ON CONFLICT (id) DO NOTHING
+                        """,
+                        cid, lead["name"], lead["website"], lead["sector"], lead["city"],
+                        lead["digital_score"], lead["opportunity_level"], lead["summary"]
+                    )
+
+                    # Inserta contact
+                    if lead.get("contacts"):
+                        contact = lead["contacts"][0]
+                        await conn.execute(
+                            """
+                            INSERT INTO lu_contacts (id, company_id, name, role, email, phone, is_primary)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                            """,
+                            str(uuid.uuid4()), cid, contact["name"], contact["role"],
+                            contact["email"], contact["phone"], True
+                        )
+
+                    # Asigna al usuario
+                    await _assign_to_user(uid, cid)
+                    batch.append(cid)
+                except Exception as e:
+                    print(f"      Error insertando lead: {e}")
 
         total = len(retries) + len(batch)
         print(f"   {name}: {len(retries)} reintentos + {len(batch)} nuevos = {total} leads")
@@ -166,20 +182,45 @@ async def assign_more_for_user(user_id: str, user_name: str) -> int:
     if can_add <= 0:
         return 0
 
-    day = date.today().toordinal()
-    today_sector = CLIENDER_SECTORS[day % len(CLIENDER_SECTORS)]
-    city         = _SPAIN_CITIES[(day + already) % len(_SPAIN_CITIES)]  # ciudad diferente para variedad
-
     qty = min(can_add, LEADS_PER_USER)
-    raw_leads = await fetch_leads_for_user(today_sector["tag"], city, qty=qty + 5)
+    raw_leads = await generate_leads_for_user(qty + 5)
     assigned = 0
-    for lead in raw_leads:
-        if assigned >= can_add:
-            break
-        cid = await save_lead_to_db(lead)
-        if cid and not await _already_assigned(cid):
-            await _assign_to_user(user_id, cid)
-            assigned += 1
+
+    async with db_conn() as conn:
+        for lead in raw_leads:
+            if assigned >= can_add:
+                break
+
+            cid = str(lead["id"])
+            if await _already_assigned(cid):
+                continue
+
+            try:
+                await conn.execute(
+                    """
+                    INSERT INTO lu_companies (id, name, website, sector, city, digital_score, opportunity_level, summary)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    cid, lead["name"], lead["website"], lead["sector"], lead["city"],
+                    lead["digital_score"], lead["opportunity_level"], lead["summary"]
+                )
+
+                if lead.get("contacts"):
+                    contact = lead["contacts"][0]
+                    await conn.execute(
+                        """
+                        INSERT INTO lu_contacts (id, company_id, name, role, email, phone, is_primary)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        """,
+                        str(uuid.uuid4()), cid, contact["name"], contact["role"],
+                        contact["email"], contact["phone"], True
+                    )
+
+                await _assign_to_user(user_id, cid)
+                assigned += 1
+            except Exception as e:
+                print(f"      Error: {e}")
 
     print(f"   Más leads para {user_name}: {assigned} asignados")
     return assigned

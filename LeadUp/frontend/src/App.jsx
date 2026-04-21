@@ -1,6 +1,5 @@
 import { Component } from 'react'
-import { AuthProvider, useAuth } from './hooks/useAuth.jsx'
-import Login from './pages/Login'
+import { AuthProvider } from './hooks/useAuth.jsx'
 import Dashboard from './pages/Dashboard'
 
 class ErrorBoundary extends Component {
@@ -27,11 +26,13 @@ class ErrorBoundary extends Component {
 
 function AppInner() {
   const { user, loading } = useAuth()
+  // Wait for auth to complete before rendering Dashboard
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{background:'#050508'}}>
       <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
     </div>
   )
+  // Render Dashboard once auth is ready
   return user ? <Dashboard /> : <Login />
 }
 

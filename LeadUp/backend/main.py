@@ -32,9 +32,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost:5173",
         "http://localhost:5174",
         "http://localhost:3000",
+        "http://127.0.0.1:5173",
         "https://leadup.cliender.com",
+        "https://www.leadup.cliender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
