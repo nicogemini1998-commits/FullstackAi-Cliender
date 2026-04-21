@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { leads as leadsApi } from '../lib/api'
+import { leadsAPI as leadsApi } from '../lib/api'
 import { User, Shield, Zap, CheckCircle2 } from 'lucide-react'
 
 const USERS = [

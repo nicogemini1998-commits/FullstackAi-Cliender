@@ -5,7 +5,7 @@ import {
   BarChart3, Settings, LogOut, Activity, ArrowUp, ArrowDown, FileText,
   Sun, Moon,
 } from 'lucide-react'
-import { leads as leadsApi } from '../lib/api'
+import { leadsAPI as leadsApi } from '../lib/api'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { useTheme } from '../hooks/useTheme.js'
 import Pipeline  from './Pipeline.jsx'
@@ -662,8 +662,9 @@ export default function Dashboard() {
   }
 
   // Cola vacía: todos pendientes/done o 0 leads
-  const queueDone = ordered.length > 0 &&
-    ordered.every(l => ['agendado','no_interest'].includes(l.call_status))
+  const doneSts = new Set(['agendado','no_interest'])
+  const doneCount = ordered.filter(x => doneSts.has(x.call_status)).length
+  const queueDone  = ordered.length > 0 && doneCount === ordered.length
   const queueEmpty = ordered.length === 0 && !loading
 
   const handleStatus = useCallback(async (assignmentId, status, notes) => {

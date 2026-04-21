@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth.jsx'
-import api from '../lib/api'
+import http from '../lib/api'
 
 /* ── helpers ────────────────────────────────────────────── */
 const clr = v => v >= 30 ? '#10b981' : v >= 15 ? '#f59e0b' : '#ef4444'
@@ -158,7 +158,7 @@ export default function Analytics() {
 
   useEffect(() => {
     setLoading(true)
-    api.get(`/admin/analytics?days=${days}`)
+    http.get(`/admin/analytics?days=${days}`)
       .then(r => setData(r.data))
       .catch(console.error)
       .finally(() => setLoading(false))

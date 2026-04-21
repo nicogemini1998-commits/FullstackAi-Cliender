@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Phone, CheckCircle2, XCircle, PhoneMissed, Clock, RotateCcw, Globe } from 'lucide-react'
-import { leads as leadsApi } from '../lib/api'
+import { leadsAPI as leadsApi } from '../lib/api'
 
 const COLS = [
   { key:'pending',   label:'PENDIENTE',       color:'#3b82f6', bg:'rgba(59,130,246,0.08)',  border:'rgba(59,130,246,0.2)',  Icon:Clock },

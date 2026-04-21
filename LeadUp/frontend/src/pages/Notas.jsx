@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth.jsx'
-import api from '../lib/api'
+import http from '../lib/api'
 import {
   FileText, Phone, Globe, CheckCircle2, PhoneMissed,
   XCircle, Clock, Calendar, Search, ChevronDown, ChevronUp, Trash2,
@@ -159,7 +159,7 @@ export default function Notas() {
   const [filter, setFilter]     = useState('all')
 
   const loadNotes = () => {
-    api.get('/notes/')
+    http.get('/notes/')
       .then(r => setNotes(r.data))
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -170,7 +170,7 @@ export default function Notas() {
   const handleDelete = async (assignmentId) => {
     if (!window.confirm('¿Eliminar esta nota?')) return
     try {
-      await api.delete(`/notes/${assignmentId}`)
+      await http.delete(`/notes/${assignmentId}`)
       setNotes(prev => prev.filter(n => n.assignment_id !== assignmentId))
       if (expanded === assignmentId) setExpanded(null)
     } catch { alert('Error al eliminar') }
