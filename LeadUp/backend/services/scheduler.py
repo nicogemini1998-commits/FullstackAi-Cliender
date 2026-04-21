@@ -1,12 +1,17 @@
 from __future__ import annotations
 import random
 import uuid
+import httpx
 from datetime import date, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from ..database import db_conn
 from .dummy_leads import generate_leads_for_user
+
+# Apollo API
+APOLLO_KEY = "PDFmEmLlq5tiVYwgd-289g"
+APOLLO_BASE = "https://api.apollo.io/api/v1"
 
 _scheduler: AsyncIOScheduler | None = None
 
@@ -22,6 +27,68 @@ async def _get_active_commercials() -> list[dict]:
             "SELECT id, name, email FROM lu_users WHERE active=TRUE ORDER BY role, name"
         )
     return [dict(r) for r in rows]
+
+
+async def _fetch_apollo_leads(qty: int = 20) -> list[dict]:
+    """Obtiene leads reales de Apollo API."""
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(
+                f"{APOLLO_BASE}/mixed_people/api_search",
+                headers={"x-api-key": APOLLO_KEY, "Content-Type": "application/json"},
+                json={
+                    "person_titles": ["CEO", "Fundador", "Director General", "Director Comercial"],
+                    "person_locations": ["Spain"],
+                    "organization_num_employees_ranges": ["5,300"],
+                    "per_page": min(qty * 2, 100),
+                    "page": 1,
+                },
+            )
+            search = resp.json()
+            people = search.get("people", [])
+
+            if not people:
+                return []
+
+            # Enriquecer con bulk_match
+            ids = [p["id"] for p in people[:qty]]
+            if ids:
+                er = await client.post(
+                    f"{APOLLO_BASE}/people/bulk_match",
+                    headers={"x-api-key": APOLLO_KEY, "Content-Type": "application/json"},
+                    json={"details": [{"id": i} for i in ids], "reveal_personal_emails": True},
+                )
+                enriched = er.json().get("matches", [])
+            else:
+                enriched = []
+
+            # Convertir a formato de lead
+            leads = []
+            for p in enriched[:qty]:
+                if not p:
+                    continue
+                org = p.get("organization") or {}
+                leads.append({
+                    "id": str(uuid.uuid4()),
+                    "name": org.get("name") or p.get("organization_name") or "Unknown",
+                    "website": org.get("website_url") or org.get("primary_domain") or f"https://{p.get('company_domain', 'example.com')}",
+                    "sector": org.get("industry") or "Tecnología",
+                    "city": org.get("city") or org.get("state") or "Madrid",
+                    "digital_score": random.randint(40, 95),
+                    "opportunity_level": random.choice(["ALTA", "MEDIA", "BAJA"]),
+                    "summary": f"Empresa en {org.get('city', 'España')}. {org.get('employee_count', '50')} empleados.",
+                    "contacts": [{
+                        "name": f"{p.get('first_name', 'Contact')} {p.get('last_name', '')}".strip(),
+                        "role": p.get("title") or "Director",
+                        "email": p.get("email") or f"info@{org.get('primary_domain', 'example.com')}",
+                        "phone": org.get("phone") or "",
+                        "is_primary": True,
+                    }],
+                })
+            return leads
+    except Exception as e:
+        print(f"Apollo fetch error: {e}")
+        return []
 
 
 async def _get_retry_leads(user_id: str, limit: int = 3) -> list[str]:
@@ -120,13 +187,14 @@ async def _daily_assignment():
                     cid
                 )
 
-        # Generar leads dummy
+        # Intentar Apollo primero, fallback a dummy
         slots = min(LEADS_PER_USER - len(retries), can_add - len(retries))
-        dummy_leads = await generate_leads_for_user(slots + 5)
+        apollo_leads = await _fetch_apollo_leads(slots + 10)
+        leads_to_assign = apollo_leads if apollo_leads else await generate_leads_for_user(slots + 5)
 
         batch = []
         async with db_conn() as conn:
-            for lead in dummy_leads:
+            for lead in leads_to_assign:
                 if len(batch) >= slots:
                     break
 
@@ -170,7 +238,7 @@ async def _daily_assignment():
 async def assign_more_for_user(user_id: str, user_name: str) -> int:
     """
     Asigna más leads a un usuario específico cuando ya agotó su cola.
-    Respeta el máximo de MAX_PER_SESSION por sesión.
+    Intenta Apollo primero, fallback a dummy leads.
     """
     async with db_conn() as conn:
         existing = await conn.fetchval(
@@ -183,9 +251,13 @@ async def assign_more_for_user(user_id: str, user_name: str) -> int:
         return 0
 
     qty = min(can_add, LEADS_PER_USER)
-    raw_leads = await generate_leads_for_user(qty + 5)
-    assigned = 0
 
+    # Intentar Apollo primero
+    raw_leads = await _fetch_apollo_leads(qty + 5)
+    if not raw_leads:
+        raw_leads = await generate_leads_for_user(qty + 5)
+
+    assigned = 0
     async with db_conn() as conn:
         for lead in raw_leads:
             if assigned >= can_add:
@@ -222,7 +294,7 @@ async def assign_more_for_user(user_id: str, user_name: str) -> int:
             except Exception as e:
                 print(f"      Error: {e}")
 
-    print(f"   Más leads para {user_name}: {assigned} asignados")
+    print(f"   Más leads para {user_name}: {assigned} asignados (Apollo+dummy)")
     return assigned
 
 
