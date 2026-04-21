@@ -22,9 +22,12 @@ app.use(express.json())
 const httpServer = createServer(app)
 const io = new Server(httpServer, { cors: { origin: '*' } })
 
-const KIE_KEY = process.env.KIE_API_KEY
-const KIE_BASE = 'https://api.kie.ai/api/v1'
-const JWT_SECRET = process.env.JWT_SECRET || 'fullstackai_secret_key'
+const KIE_KEY       = process.env.KIE_API_KEY
+const KIE_BASE      = 'https://api.kie.ai/api/v1'
+const JWT_SECRET    = process.env.JWT_SECRET || 'fullstackai_secret_key'
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY
+const FREEPIK_KEY   = process.env.FREEPIK_API_KEY
+const FREEPIK_BASE  = process.env.FREEPIK_BASE || 'https://api.freepik.com/v1'
 
 // ─── PostgreSQL pool ──────────────────────────────────────────────────────────
 const db = new Pool({
@@ -37,8 +40,69 @@ const db = new Pool({
 })
 let dbReady = false
 db.connect()
-  .then(() => { dbReady = true; console.log('🗄️  PostgreSQL conectado') })
+  .then(async () => {
+    dbReady = true
+    console.log('🗄️  PostgreSQL conectado')
+    await initSchema()
+  })
   .catch(e => console.error('⚠️  PostgreSQL no disponible (modo local sin DB):', e.message))
+
+async function initSchema() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS agents (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      system_prompt TEXT NOT NULL,
+      model TEXT DEFAULT 'claude-haiku-4-5-20251001',
+      max_tokens INTEGER DEFAULT 2000,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS user_canvas (
+      user_id TEXT PRIMARY KEY,
+      nodes JSONB DEFAULT '[]',
+      edges JSONB DEFAULT '[]',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `)
+  // Agente /shaq por defecto si no existe
+  const { rowCount } = await db.query("SELECT 1 FROM agents WHERE name='/shaq' LIMIT 1")
+  if (!rowCount) {
+    await db.query(`
+      INSERT INTO agents (name, description, system_prompt, model, max_tokens)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [
+      '/shaq',
+      'Agente creativo UGC — crea campañas de imagen y video automáticamente',
+      `Eres /shaq, un agente creativo especializado en campañas visuales UGC y marketing de producto.
+Cuando el usuario pide crear imágenes o videos, SIEMPRE responde con JSON válido en este formato exacto:
+{"reply": "tu explicación al usuario", "actions": [...]}
+
+Acciones disponibles:
+- Imagen: {"type":"create_image","prompt":"...","model":"nano-banana-pro","qty":5,"ar":"9:16"}
+- Video:  {"type":"create_video","prompt":"...","model":"kling-2.6/text-to-video","ar":"16:9","duration":5}
+
+Modelos de imagen: nano-banana-pro, nano-banana-2, flux-2/pro-text-to-image, ideogram/v3-text-to-image
+Modelos de video:  kling-2.6/text-to-video, wan/2-7-text-to-video, sora-2-text-to-video
+Aspect ratios imagen: 1:1, 4:5, 9:16, 16:9, 4:3, 3:2
+Aspect ratios video:  16:9, 9:16, 1:1
+
+Si el usuario NO pide crear contenido, responde con: {"reply":"tu respuesta","actions":[]}
+
+Especialidades:
+- Campañas UGC (User Generated Content)
+- Ángulos de producto variados
+- Prompts para contenido viral en redes sociales
+- Adaptación de estilo por plataforma (TikTok, Instagram, YouTube)
+
+IMPORTANTE: Cuando el usuario pida N imágenes de un producto, distribuye en varias acciones de 5-10 imágenes c/u con prompts variados (ángulos, escenarios, estilos distintos).`,
+      'claude-haiku-4-5-20251001',
+      3000
+    ])
+    console.log('🤖 Agente /shaq creado por defecto')
+  }
+}
 
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 function requireAuth(req, res, next) {
@@ -210,6 +274,170 @@ app.delete('/api/styles/:id', requireAuth, async (req, res) => {
   )
   if (!rowCount) return res.status(403).json({ error: 'Sin permisos' })
   res.json({ ok: true })
+})
+
+// ─── AGENTES ──────────────────────────────────────────────────────────────────
+// GET: lista agentes activos (todos los usuarios autenticados)
+app.get('/api/agents', requireAuth, async (req, res) => {
+  if (!dbReady) return res.json([])
+  const { rows } = await db.query(
+    'SELECT id, name, description, model, max_tokens, is_active FROM agents WHERE is_active=true ORDER BY name'
+  )
+  res.json(rows)
+})
+
+// POST: crear agente (solo admin)
+app.post('/api/agents', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo admins pueden crear agentes' })
+  if (!dbReady) return res.status(503).json({ error: 'DB no disponible' })
+  const { name, description, system_prompt, model, max_tokens } = req.body
+  if (!name || !system_prompt) return res.status(400).json({ error: 'name y system_prompt requeridos' })
+  const { rows } = await db.query(
+    'INSERT INTO agents(name,description,system_prompt,model,max_tokens) VALUES($1,$2,$3,$4,$5) RETURNING *',
+    [name, description||'', system_prompt, model||'claude-haiku-4-5-20251001', max_tokens||2000]
+  )
+  res.json(rows[0])
+})
+
+// PUT: editar agente (solo admin)
+app.put('/api/agents/:id', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo admins' })
+  if (!dbReady) return res.status(503).json({ error: 'DB no disponible' })
+  const { name, description, system_prompt, model, max_tokens, is_active } = req.body
+  const { rows } = await db.query(`
+    UPDATE agents SET
+      name=COALESCE($1,name), description=COALESCE($2,description),
+      system_prompt=COALESCE($3,system_prompt), model=COALESCE($4,model),
+      max_tokens=COALESCE($5,max_tokens), is_active=COALESCE($6,is_active)
+    WHERE id=$7 RETURNING *`,
+    [name,description,system_prompt,model,max_tokens,is_active,req.params.id]
+  )
+  if (!rows.length) return res.status(404).json({ error: 'No encontrado' })
+  res.json(rows[0])
+})
+
+// DELETE: borrar agente (solo admin)
+app.delete('/api/agents/:id', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo admins' })
+  if (!dbReady) return res.json({ ok: true })
+  await db.query('DELETE FROM agents WHERE id=$1', [req.params.id])
+  res.json({ ok: true })
+})
+
+// POST /api/agent/run — ejecutar agente con mensaje del usuario
+app.post('/api/agent/run', requireAuth, async (req, res) => {
+  const { agentId, message, history = [] } = req.body
+  if (!message) return res.status(400).json({ error: 'message requerido' })
+  if (!ANTHROPIC_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY no configurada' })
+
+  let agent = null
+  if (dbReady && agentId) {
+    const { rows } = await db.query('SELECT * FROM agents WHERE id=$1 AND is_active=true', [agentId])
+    agent = rows[0] || null
+  }
+
+  const systemPrompt = agent?.system_prompt ||
+    'Eres un asistente creativo. Responde siempre en JSON: {"reply":"...","actions":[]}'
+
+  const model  = agent?.model     || 'claude-haiku-4-5-20251001'
+  const tokens = agent?.max_tokens || 2000
+
+  // Construir historial de mensajes para Claude
+  const messages = [
+    ...history.slice(-10).map(h => ({ role: h.role, content: h.content })),
+    { role: 'user', content: message }
+  ]
+
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key':         ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type':      'application/json',
+      },
+      body: JSON.stringify({ model, max_tokens: tokens, system: systemPrompt, messages }),
+    })
+    const data = await r.json()
+    if (!r.ok) return res.status(500).json({ error: data.error?.message || 'Error Claude API' })
+
+    const rawText = data.content?.[0]?.text || ''
+
+    // Intentar parsear JSON si el agente lo devuelve
+    let reply = rawText
+    let actions = []
+    try {
+      const jsonStart = rawText.indexOf('{')
+      const jsonEnd   = rawText.lastIndexOf('}')
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        const parsed = JSON.parse(rawText.slice(jsonStart, jsonEnd + 1))
+        reply   = parsed.reply   || rawText
+        actions = parsed.actions || []
+      }
+    } catch { /* respuesta de texto plano — ok */ }
+
+    res.json({ reply, actions, model, agentName: agent?.name || 'Asistente' })
+  } catch (err) {
+    console.error('Agent run error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ─── CANVAS — auto-save/load por usuario ─────────────────────────────────────
+app.get('/api/canvas', requireAuth, async (req, res) => {
+  if (!dbReady) return res.json({ nodes: [], edges: [] })
+  const { rows } = await db.query('SELECT nodes, edges FROM user_canvas WHERE user_id=$1', [req.user.id])
+  if (!rows.length) return res.json({ nodes: [], edges: [] })
+  res.json({ nodes: rows[0].nodes, edges: rows[0].edges })
+})
+
+app.post('/api/canvas', requireAuth, async (req, res) => {
+  if (!dbReady) return res.json({ ok: true })
+  const { nodes, edges } = req.body
+  await db.query(`
+    INSERT INTO user_canvas(user_id, nodes, edges, updated_at)
+    VALUES($1,$2,$3,NOW())
+    ON CONFLICT(user_id) DO UPDATE SET nodes=$2, edges=$3, updated_at=NOW()
+  `, [req.user.id, JSON.stringify(nodes||[]), JSON.stringify(edges||[])])
+  res.json({ ok: true })
+})
+
+// ─── Freepik API — generación de imágenes ────────────────────────────────────
+app.post('/api/freepik/generate', requireAuth, async (req, res) => {
+  if (!FREEPIK_KEY) return res.status(503).json({ error: 'FREEPIK_API_KEY no configurada' })
+  const { prompt, model = 'flux-schnell', aspect_ratio = '1:1', num_images = 1, style } = req.body
+  if (!prompt) return res.status(400).json({ error: 'prompt requerido' })
+
+  const body = { prompt, num_images, image: { size: aspect_ratio } }
+  if (style) body.styling = { style }
+
+  const endpoint = model.includes('mystic') ? '/ai/mystic' : '/ai/text-to-image'
+  try {
+    const r = await fetch(`${FREEPIK_BASE}${endpoint}`, {
+      method: 'POST',
+      headers: { 'x-freepik-api-key': FREEPIK_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await r.json()
+    if (!r.ok) return res.status(r.status).json({ error: data.message || 'Error Freepik' })
+    res.json(data)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /api/freepik/task/:taskId — polling estado Freepik
+app.get('/api/freepik/task/:taskId', requireAuth, async (req, res) => {
+  if (!FREEPIK_KEY) return res.status(503).json({ error: 'FREEPIK_API_KEY no configurada' })
+  try {
+    const r = await fetch(`${FREEPIK_BASE}/ai/mystic/${req.params.taskId}`, {
+      headers: { 'x-freepik-api-key': FREEPIK_KEY },
+    })
+    const data = await r.json()
+    res.json(data)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // ─── Mapeo de parámetros por modelo ───────────────────────────────────────────

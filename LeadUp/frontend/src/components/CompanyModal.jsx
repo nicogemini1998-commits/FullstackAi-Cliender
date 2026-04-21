@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
-  X, Globe, Phone, Mail, Link2, Star,
+  X, Globe, Phone, Link2, Star,
   TrendingUp, Cpu, Video, ExternalLink,
   ChevronLeft, ChevronRight, CheckCircle2, XCircle, PhoneMissed, Clock,
   Zap, RotateCcw,
@@ -188,46 +188,95 @@ export default function CompanyModal({
 
         <div className="px-6 py-5 space-y-5">
 
-          {/* Opening line para el comercial */}
-          {openingLine && (
-            <div className="rounded-2xl p-4"
-              style={{background:'rgba(59,130,246,0.08)', border:'1px solid rgba(96,165,250,0.2)'}}>
-              <div className="flex items-center gap-2 mb-2">
-                <Zap size={13} style={{color:'#60a5fa'}}/>
-                <span className="text-xs font-bold" style={{color:'#60a5fa'}}>LÍNEA DE APERTURA</span>
+          {/* ═══ ESTRATEGIA DE ATAQUE — sección principal ═══ */}
+          <div className="rounded-2xl overflow-hidden"
+            style={{background:'linear-gradient(135deg,rgba(59,130,246,0.1),rgba(16,185,129,0.06))',
+              border:'1px solid rgba(96,165,250,0.25)'}}>
+            <div className="px-4 py-3 flex items-center gap-2"
+              style={{borderBottom:'1px solid rgba(255,255,255,0.06)',
+                background:'rgba(59,130,246,0.08)'}}>
+              <Zap size={14} style={{color:'#60a5fa'}}/>
+              <span className="text-xs font-bold tracking-widest uppercase" style={{color:'#60a5fa'}}>
+                Estrategia de Ataque
+              </span>
+            </div>
+
+            {/* Línea de apertura */}
+            {openingLine && (
+              <div className="px-4 py-3" style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+                <p className="text-xs font-semibold mb-1 uppercase tracking-wider" style={{color:'rgba(255,255,255,0.3)'}}>Apertura recomendada</p>
+                <p className="text-sm font-medium text-white italic">"{openingLine}"</p>
               </div>
-              <p className="text-sm font-medium text-white italic">"{openingLine}"</p>
-            </div>
-          )}
+            )}
 
-          {/* Hooks CLIENDER */}
-          {(hookCaptacion || hookCrm || hookVisibilidad) && (
-            <div className="grid grid-cols-3 gap-2">
-              {hookCaptacion && (
-                <div className="rounded-2xl p-3 opp-sales">
-                  <p className="text-xs font-bold mb-1" style={{color:'#34d399'}}>💰 CAPTACIÓN</p>
-                  <p className="text-xs" style={{color:'rgba(255,255,255,0.6)'}}>{hookCaptacion}</p>
+            {/* Oportunidades detalladas */}
+            {(company.opportunity_sales || company.opportunity_tech || company.opportunity_av) ? (
+              <div className="grid grid-cols-3 divide-x" style={{borderColor:'rgba(255,255,255,0.05)'}}>
+                {company.opportunity_sales ? (
+                  <div className="p-4">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <TrendingUp size={13} style={{color:'#34d399'}}/>
+                      <span className="text-xs font-bold" style={{color:'#34d399'}}>SALES / CRM</span>
+                    </div>
+                    <p className="text-xs leading-relaxed whitespace-pre-line" style={{color:'rgba(255,255,255,0.65)'}}>{company.opportunity_sales}</p>
+                  </div>
+                ) : (
+                  <div className="p-4 flex items-center justify-center">
+                    <p className="text-xs" style={{color:'rgba(255,255,255,0.15)'}}>Sin datos</p>
+                  </div>
+                )}
+                {company.opportunity_tech ? (
+                  <div className="p-4" style={{borderColor:'rgba(255,255,255,0.05)'}}>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Cpu size={13} style={{color:'#60a5fa'}}/>
+                      <span className="text-xs font-bold" style={{color:'#60a5fa'}}>TECH / IA</span>
+                    </div>
+                    <p className="text-xs leading-relaxed whitespace-pre-line" style={{color:'rgba(255,255,255,0.65)'}}>{company.opportunity_tech}</p>
+                  </div>
+                ) : (
+                  <div className="p-4 flex items-center justify-center" style={{borderColor:'rgba(255,255,255,0.05)'}}>
+                    <p className="text-xs" style={{color:'rgba(255,255,255,0.15)'}}>Sin datos</p>
+                  </div>
+                )}
+                {company.opportunity_av ? (
+                  <div className="p-4" style={{borderColor:'rgba(255,255,255,0.05)'}}>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Video size={13} style={{color:'#fb923c'}}/>
+                      <span className="text-xs font-bold" style={{color:'#fb923c'}}>CONTENIDO AV</span>
+                    </div>
+                    <p className="text-xs leading-relaxed whitespace-pre-line" style={{color:'rgba(255,255,255,0.65)'}}>{company.opportunity_av}</p>
+                  </div>
+                ) : (
+                  <div className="p-4 flex items-center justify-center" style={{borderColor:'rgba(255,255,255,0.05)'}}>
+                    <p className="text-xs" style={{color:'rgba(255,255,255,0.15)'}}>Sin datos</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Hooks como fallback si no hay opportunity_* */
+              (hookCaptacion || hookCrm || hookVisibilidad) ? (
+                <div className="grid grid-cols-3 divide-x" style={{borderColor:'rgba(255,255,255,0.05)'}}>
+                  {[
+                    { val: hookCaptacion, label: 'CAPTACIÓN',    icon: TrendingUp, color:'#34d399' },
+                    { val: hookCrm,       label: 'CRM',          icon: Cpu,        color:'#60a5fa' },
+                    { val: hookVisibilidad,label:'VISIBILIDAD',  icon: Video,      color:'#fb923c' },
+                  ].map(({ val, label, icon: Icon, color }) => (
+                    <div key={label} className="p-4" style={{borderColor:'rgba(255,255,255,0.05)'}}>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Icon size={13} style={{color}}/>
+                        <span className="text-xs font-bold" style={{color}}>{label}</span>
+                      </div>
+                      <p className="text-xs leading-relaxed" style={{color:'rgba(255,255,255,0.65)'}}>{val || '—'}</p>
+                    </div>
+                  ))}
                 </div>
-              )}
-              {hookCrm && (
-                <div className="rounded-2xl p-3 opp-tech">
-                  <p className="text-xs font-bold mb-1" style={{color:'#60a5fa'}}>🔧 CRM/COMERCIAL</p>
-                  <p className="text-xs" style={{color:'rgba(255,255,255,0.6)'}}>{hookCrm}</p>
+              ) : (
+                <div className="p-4">
+                  <p className="text-sm" style={{color:'rgba(255,255,255,0.55)'}}>{company.summary || 'Sin análisis de oportunidad disponible.'}</p>
                 </div>
-              )}
-              {hookVisibilidad && (
-                <div className="rounded-2xl p-3 opp-av">
-                  <p className="text-xs font-bold mb-1" style={{color:'#fb923c'}}>📱 VISIBILIDAD</p>
-                  <p className="text-xs" style={{color:'rgba(255,255,255,0.6)'}}>{hookVisibilidad}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Resumen si no hay hooks */}
-          {!hookCaptacion && company.summary && (
-            <p className="text-sm leading-relaxed" style={{color:'rgba(255,255,255,0.55)'}}>{company.summary}</p>
-          )}
+              )
+            )}
+          </div>
 
           {/* Decision Makers */}
           {(primary || secondary.length > 0) && (
@@ -244,19 +293,20 @@ export default function CompanyModal({
                     </a>
                   )}
                   {company.social_linkedin && (
-                    <a href={company.social_linkedin} target="_blank" rel="noopener noreferrer"
+                    <a href={`https://${company.social_linkedin.replace(/^https?:\/\//,'')}`}
+                      target="_blank" rel="noopener noreferrer"
                       className="glass-btn glass-btn-blue flex items-center gap-1.5 px-3 py-1.5 text-xs">
-                      <Link2 size={11}/>LinkedIn
+                      <Link2 size={11}/>LinkedIn empresa
                     </a>
                   )}
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {primary && (
-                  <div className="rounded-2xl p-4 col-span-1"
+                  <div className="rounded-2xl p-4"
                     style={{background:'rgba(59,130,246,0.07)', border:'1px solid rgba(96,165,250,0.2)'}}>
                     <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{color:'rgba(96,165,250,0.7)'}}>
-                      Contacto Principal
+                      Decisor Principal
                     </p>
                     <p className="font-bold text-white text-sm">{primary.name}</p>
                     <p className="text-xs italic mb-2" style={{color:'rgba(255,255,255,0.4)'}}>{primary.role}</p>
@@ -267,32 +317,40 @@ export default function CompanyModal({
                         <Phone size={13}/>{primary.phone}
                       </a>
                     )}
-                    {primary.linkedin_url && (
-                      <a href={primary.linkedin_url} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs mt-1.5" style={{color:'rgba(96,165,250,0.7)'}}>
-                        <Link2 size={10}/>LinkedIn
-                      </a>
-                    )}
+                    <a href={primary.linkedin_url || `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent((primary.name||'') + ' ' + (company.name||''))}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs mt-2"
+                      style={{color: primary.linkedin_url ? 'rgba(96,165,250,0.9)' : 'rgba(96,165,250,0.45)'}}>
+                      <Link2 size={10}/>
+                      {primary.linkedin_url ? 'LinkedIn' : 'Buscar en LinkedIn →'}
+                    </a>
                   </div>
                 )}
                 {secondary.slice(0,2).map((c,i) => (
                   <div key={i} className="rounded-2xl p-4"
                     style={{background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)'}}>
-                    <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{color:'rgba(255,255,255,0.3)'}}>Decisor {i+2}</p>
+                    <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{color:'rgba(255,255,255,0.3)'}}>Alto Cargo {i+2}</p>
                     <p className="font-bold text-white text-sm">{c.name}</p>
                     <p className="text-xs italic mb-2" style={{color:'rgba(255,255,255,0.4)'}}>{c.role}</p>
-                    {c.email && <p className="text-xs" style={{color:'rgba(255,255,255,0.4)'}}>{c.email}</p>}
+                    {c.email && <p className="text-xs mb-1" style={{color:'rgba(255,255,255,0.4)'}}>{c.email}</p>}
                     {c.phone && (
                       <a href={`tel:${c.phone}`} className="flex items-center gap-1.5 text-xs mt-1" style={{color:'#34d399'}}>
                         <Phone size={10}/>{c.phone}
                       </a>
                     )}
+                    <a href={c.linkedin_url || `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent((c.name||'') + ' ' + (company.name||''))}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs mt-2"
+                      style={{color: c.linkedin_url ? 'rgba(96,165,250,0.9)' : 'rgba(96,165,250,0.45)'}}>
+                      <Link2 size={10}/>
+                      {c.linkedin_url ? 'LinkedIn' : 'Buscar en LinkedIn →'}
+                    </a>
                   </div>
                 ))}
                 {Array.from({length: Math.max(0, 2-secondary.length)}).map((_,i) => (
                   <div key={`ph${i}`} className="rounded-2xl p-4"
                     style={{background:'rgba(255,255,255,0.01)', border:'1px dashed rgba(255,255,255,0.05)'}}>
-                    <p className="text-xs" style={{color:'rgba(255,255,255,0.15)'}}>Sin decisor</p>
+                    <p className="text-xs" style={{color:'rgba(255,255,255,0.15)'}}>Sin alto cargo</p>
                   </div>
                 ))}
               </div>
@@ -322,35 +380,6 @@ export default function CompanyModal({
               </div>
             </div>
           </div>
-
-          {/* Oportunidades */}
-          {(company.opportunity_sales || company.opportunity_tech || company.opportunity_av) && (
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest mb-2" style={{color:'rgba(255,255,255,0.3)'}}>
-                Oportunidades CLIENDER
-              </h3>
-              <div className="grid grid-cols-3 gap-2">
-                {company.opportunity_sales && (
-                  <div className="opp-sales rounded-2xl p-3.5">
-                    <div className="flex items-center gap-1.5 mb-1.5"><TrendingUp size={12} style={{color:'#34d399'}}/><span className="text-xs font-bold" style={{color:'#34d399'}}>SALES/CRM</span></div>
-                    <p className="text-xs whitespace-pre-line" style={{color:'rgba(255,255,255,0.55)'}}>{company.opportunity_sales}</p>
-                  </div>
-                )}
-                {company.opportunity_tech && (
-                  <div className="opp-tech rounded-2xl p-3.5">
-                    <div className="flex items-center gap-1.5 mb-1.5"><Cpu size={12} style={{color:'#60a5fa'}}/><span className="text-xs font-bold" style={{color:'#60a5fa'}}>TECH/IA</span></div>
-                    <p className="text-xs whitespace-pre-line" style={{color:'rgba(255,255,255,0.55)'}}>{company.opportunity_tech}</p>
-                  </div>
-                )}
-                {company.opportunity_av && (
-                  <div className="opp-av rounded-2xl p-3.5">
-                    <div className="flex items-center gap-1.5 mb-1.5"><Video size={12} style={{color:'#fb923c'}}/><span className="text-xs font-bold" style={{color:'#fb923c'}}>CONTENIDO AV</span></div>
-                    <p className="text-xs whitespace-pre-line" style={{color:'rgba(255,255,255,0.55)'}}>{company.opportunity_av}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
 
           <textarea value={notes} onChange={e => setNotes(e.target.value)}
             placeholder="Notas de la llamada..." rows={2}

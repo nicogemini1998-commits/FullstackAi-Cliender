@@ -13,6 +13,7 @@ import {
   Loader2, AlertCircle, Download, Plus, ChevronDown, ChevronUp,
   LayoutTemplate, Trash2, Save, FolderOpen, Check,
   ChevronRight, Palette, Pencil, Play, Shuffle, FolderPlus, StickyNote,
+  Bot, Send, RefreshCw, Sparkles,
 } from 'lucide-react'
 
 const SERVER = import.meta.env.PROD ? '' : 'http://localhost:3001'
@@ -2389,83 +2390,100 @@ const NoteNode = ({ id, data }) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // ── TextNode — editor de texto enriquecido (solo admin)
 // ══════════════════════════════════════════════════════════════════════════════
-const C_TEXT = '#60a5fa'
+const C_TEXT  = '#60a5fa'
+const C_AGENT = '#a78bfa'
 
 const TextNode = ({ id, data }) => {
-  const editorRef = useRef(null)
-  const [activeFormats, setActiveFormats] = useState({})
-  const [blockType, setBlockType] = useState('p')
-  const [showBlockMenu, setShowBlockMenu] = useState(false)
+  const { addNodes, addEdges, getNode } = useReactFlow()
+  const token = localStorage.getItem('fai_token')
+  const authH = token ? { Authorization: `Bearer ${token}` } : {}
+
+  const [agents, setAgents]        = useState([])
+  const [selectedAgent, setSel]    = useState(null)
+  const [showAgentMenu, setAgMenu] = useState(false)
+  const [messages, setMessages]    = useState([])
+  const [input, setInput]          = useState('')
+  const [running, setRunning]      = useState(false)
+  const chatRef                    = useRef(null)
+
+  useEffect(() => {
+    fetch(`${SERVER}/api/agents`, { headers: authH })
+      .then(r => r.ok ? r.json() : [])
+      .then(list => { setAgents(list); if (list.length) setSel(list[0]) })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
+  }, [messages])
+
+  const executeActions = (actions, sourceId) => {
+    const srcNode = getNode(sourceId)
+    const bx = (srcNode?.position?.x || 0) + (srcNode?.measured?.width || 380) + 60
+    const by = (srcNode?.position?.y || 0)
+    const newNodes = [], newEdges = []
+    actions.forEach((act, i) => {
+      const nid = `agent-${Date.now()}-${i}`
+      if (act.type === 'create_image') {
+        newNodes.push({ id:nid, type:'image', position:{x:bx, y:by+i*310},
+          style:{width:340,height:300},
+          data:{ label:`Imagen — ${selectedAgent?.name||'Agente'}`,
+            autoPrompt:act.prompt, autoModel:act.model||'nano-banana-pro',
+            autoQty:act.qty||4, autoAr:act.ar||'1:1' } })
+        newEdges.push({ id:`e-${sourceId}-${nid}`, source:sourceId, target:nid, type:'gradient' })
+      }
+      if (act.type === 'create_video') {
+        newNodes.push({ id:nid, type:'video', position:{x:bx, y:by+i*330},
+          style:{width:340,height:320},
+          data:{ label:`Video — ${selectedAgent?.name||'Agente'}`,
+            autoPrompt:act.prompt, autoModel:act.model||'kling-2.6/text-to-video',
+            autoAr:act.ar||'16:9', autoDuration:act.duration||5 } })
+        newEdges.push({ id:`e-${sourceId}-${nid}`, source:sourceId, target:nid, type:'gradient' })
+      }
+    })
+    if (newNodes.length) {
+      addNodes(newNodes); addEdges(newEdges)
+      setTimeout(() => newNodes.forEach(n => Bus.emit('agent:auto-execute', { nodeId:n.id, ...n.data })), 400)
+    }
+  }
+
+  const send = async () => {
+    const msg = input.trim()
+    if (!msg || running) return
+    setInput(''); setRunning(true)
+    setMessages(prev => [...prev, { role:'user', content:msg }])
+    try {
+      const history = messages.slice(-10).map(m => ({ role: m.role==='agent'?'assistant':'user', content:m.content }))
+      const r = await fetch(`${SERVER}/api/agent/run`, {
+        method:'POST', headers:{ 'Content-Type':'application/json', ...authH },
+        body: JSON.stringify({ agentId:selectedAgent?.id, message:msg, history }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error||'Error')
+      setMessages(prev => [...prev, { role:'agent', content:d.reply, actions:d.actions||[] }])
+      if (d.actions?.length) executeActions(d.actions, id)
+    } catch(err) {
+      setMessages(prev => [...prev, { role:'agent', content:`Error: ${err.message}`, actions:[] }])
+    } finally { setRunning(false) }
+  }
 
   const textHandles = <>
-    <Handle type="target" position={Position.Left}  style={mkHandle('left',  C_TEXT,'image')}/>
-    <Handle type="source" position={Position.Right} style={mkHandle('right', C_TEXT,'image')}/>
+    <Handle type="target" position={Position.Left}  style={mkHandle('left',  C_AGENT,'image')}/>
+    <Handle type="source" position={Position.Right} style={mkHandle('right', C_AGENT,'image')}/>
   </>
 
-  const exec = (cmd, val=null) => {
-    editorRef.current?.focus()
-    document.execCommand(cmd, false, val)
-    updateFormats()
-  }
-
-  const updateFormats = () => {
-    setActiveFormats({
-      bold:      document.queryCommandState('bold'),
-      italic:    document.queryCommandState('italic'),
-      ul:        document.queryCommandState('insertUnorderedList'),
-      ol:        document.queryCommandState('insertOrderedList'),
-    })
-  }
-
-  const applyBlock = (tag) => {
-    editorRef.current?.focus()
-    if (tag === 'p')  document.execCommand('formatBlock', false, 'p')
-    if (tag === 'h1') document.execCommand('formatBlock', false, 'h1')
-    if (tag === 'h2') document.execCommand('formatBlock', false, 'h2')
-    if (tag === 'h3') document.execCommand('formatBlock', false, 'h3')
-    setBlockType(tag)
-    setShowBlockMenu(false)
-    updateFormats()
-  }
-
-  const blockLabels = { p:'Párrafo', h1:'Título 1', h2:'Título 2', h3:'Título 3' }
-
-  const FmtBtn = ({ cmd, label, active }) => (
-    <button
-      onMouseDown={e=>{ e.preventDefault(); exec(cmd) }}
-      style={{
-        width:26, height:26, borderRadius:6, border:'none', cursor:'pointer',
-        fontWeight:700, fontSize:12,
-        background: active ? `${C_TEXT}28` : 'transparent',
-        color: active ? C_TEXT : 'rgba(255,255,255,0.45)',
-        display:'flex', alignItems:'center', justifyContent:'center',
-        transition:`all 150ms ${SPRING}`,
-        fontFamily:'Plus Jakarta Sans,sans-serif',
-      }}
-      onMouseEnter={e=>{ if(!active) e.currentTarget.style.background='rgba(255,255,255,0.07)' }}
-      onMouseLeave={e=>{ if(!active) e.currentTarget.style.background='transparent' }}>
-      {label}
-    </button>
-  )
-
   return (
-    <Shell hex={C_TEXT} minW={320} minH={200} handles={textHandles}>
+    <Shell hex={C_AGENT} minW={360} minH={440} handles={textHandles}>
       {/* Header */}
-      <div style={{
-        display:'flex', alignItems:'center', justifyContent:'space-between',
-        padding:'8px 10px 8px 12px',
-        borderBottom:'1px solid rgba(255,255,255,0.05)', flexShrink:0,
-      }}>
-        <div style={{display:'flex', alignItems:'center', gap:7}}>
-          <div style={{
-            width:20, height:20, borderRadius:6,
-            background:`${C_TEXT}18`, border:`1px solid ${C_TEXT}30`,
-            display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
-          }}>
-            <span style={{fontSize:11, fontWeight:800, color:C_TEXT, fontFamily:'serif'}}>T</span>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+        padding:'8px 10px 8px 12px',borderBottom:'1px solid rgba(255,255,255,0.05)',flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:7}}>
+          <div style={{width:22,height:22,borderRadius:7,background:`${C_AGENT}22`,border:`1px solid ${C_AGENT}40`,
+            display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <Bot size={12} color={C_AGENT}/>
           </div>
-          <span style={{fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.75)', letterSpacing:'-0.01em'}}>
-            {data.label || 'Texto'}
+          <span style={{fontSize:12,fontWeight:700,color:'rgba(255,255,255,0.85)',letterSpacing:'-0.01em'}}>
+            Agente IA
           </span>
         </div>
         <button onClick={()=>data?.onDelete?.()}
@@ -2477,118 +2495,103 @@ const TextNode = ({ id, data }) => {
         </button>
       </div>
 
-      {/* Toolbar formato */}
-      <div className="nowheel nopan nodrag" style={{
-        display:'flex', alignItems:'center', gap:2,
-        padding:'5px 10px',
-        borderBottom:'1px solid rgba(255,255,255,0.05)', flexShrink:0,
-        background:'rgba(255,255,255,0.015)',
-      }}>
-        {/* Block type dropdown */}
-        <div style={{position:'relative'}}>
-          <button
-            onMouseDown={e=>{e.preventDefault(); setShowBlockMenu(v=>!v)}}
-            style={{
-              display:'flex', alignItems:'center', gap:4,
-              padding:'3px 8px', borderRadius:6, border:'none', cursor:'pointer',
-              background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.55)',
-              fontSize:11, fontWeight:500,
-              transition:`all 150ms ${SPRING}`,
-            }}>
-            {blockLabels[blockType]}
-            <ChevronDown style={{width:10,height:10,opacity:0.5}}/>
-          </button>
-          {showBlockMenu && (
-            <div style={{
-              position:'absolute', top:'calc(100% + 4px)', left:0, zIndex:100,
-              background:'rgba(10,10,18,0.98)', backdropFilter:'blur(24px)',
-              border:'1px solid rgba(255,255,255,0.1)', borderRadius:10,
-              padding:4, minWidth:120,
-              boxShadow:'0 8px 32px rgba(0,0,0,0.6)',
-            }}>
-              {Object.entries(blockLabels).map(([tag,label])=>(
-                <button key={tag}
-                  onMouseDown={e=>{e.preventDefault(); applyBlock(tag)}}
-                  style={{
-                    display:'block', width:'100%', textAlign:'left',
-                    padding:'6px 10px', borderRadius:7, border:'none', cursor:'pointer',
-                    background: blockType===tag ? `${C_TEXT}18` : 'transparent',
-                    color: blockType===tag ? C_TEXT : 'rgba(255,255,255,0.6)',
-                    fontSize:11, fontWeight: tag==='p' ? 400 : 700-(['p','h3','h2','h1'].indexOf(tag)*100),
-                    transition:`all 120ms ${SPRING}`,
-                  }}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Divisor */}
-        <div style={{width:1,height:16,background:'rgba(255,255,255,0.08)',margin:'0 2px'}}/>
-
-        <FmtBtn cmd="bold"   label="B" active={activeFormats.bold}/>
-        <FmtBtn cmd="italic" label="I" active={activeFormats.italic}/>
-
-        {/* Divisor */}
-        <div style={{width:1,height:16,background:'rgba(255,255,255,0.08)',margin:'0 2px'}}/>
-
-        <FmtBtn cmd="insertUnorderedList" label="≡" active={activeFormats.ul}/>
-        <FmtBtn cmd="insertOrderedList"   label="№" active={activeFormats.ol}/>
-
-        {/* Divisor */}
-        <div style={{width:1,height:16,background:'rgba(255,255,255,0.08)',margin:'0 2px'}}/>
-
-        {/* Copiar texto plano */}
-        <button
-          onMouseDown={e=>{ e.preventDefault(); navigator.clipboard.writeText(editorRef.current?.innerText||'') }}
-          title="Copiar texto"
-          style={{
-            width:26,height:26,borderRadius:6,border:'none',cursor:'pointer',
-            background:'transparent',color:'rgba(255,255,255,0.35)',
-            display:'flex',alignItems:'center',justifyContent:'center',
-            transition:`all 150ms ${SPRING}`,
-          }}
-          onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.07)'}
-          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-          <Check style={{width:11,height:11}}/>
+      {/* Selector de agente */}
+      <div className="nowheel nopan nodrag" style={{padding:'7px 10px',borderBottom:'1px solid rgba(255,255,255,0.05)',flexShrink:0,position:'relative'}}>
+        <button onClick={()=>setAgMenu(v=>!v)} style={{
+          width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',
+          padding:'6px 10px',borderRadius:8,border:`1px solid ${C_AGENT}30`,
+          background:`${C_AGENT}12`,cursor:'pointer',color:'rgba(255,255,255,0.8)',
+          fontSize:12,fontWeight:600,transition:`all 150ms ${SPRING}`}}>
+          <span style={{display:'flex',alignItems:'center',gap:7}}>
+            <Sparkles size={11} color={C_AGENT}/>
+            {selectedAgent ? selectedAgent.name : 'Selecciona un agente…'}
+          </span>
+          <ChevronDown size={12} style={{opacity:0.5,transform:showAgentMenu?'rotate(180deg)':'none',transition:'transform 200ms'}}/>
         </button>
+        {showAgentMenu && agents.length > 0 && (
+          <div style={{position:'absolute',top:'calc(100% + 2px)',left:10,right:10,zIndex:200,
+            background:'rgba(8,8,16,0.98)',backdropFilter:'blur(20px)',
+            border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,
+            padding:4,boxShadow:'0 12px 40px rgba(0,0,0,0.7)'}}>
+            {agents.map(ag=>(
+              <button key={ag.id} onClick={()=>{setSel(ag);setAgMenu(false)}} style={{
+                display:'flex',flexDirection:'column',width:'100%',textAlign:'left',
+                padding:'8px 10px',borderRadius:7,border:'none',cursor:'pointer',
+                background:selectedAgent?.id===ag.id?`${C_AGENT}18`:'transparent',
+                transition:`all 120ms ${SPRING}`}}
+                onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.06)'}
+                onMouseLeave={e=>e.currentTarget.style.background=selectedAgent?.id===ag.id?`${C_AGENT}18`:'transparent'}>
+                <span style={{fontSize:12,fontWeight:700,color:selectedAgent?.id===ag.id?C_AGENT:'rgba(255,255,255,0.8)'}}>{ag.name}</span>
+                {ag.description&&<span style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:2}}>{ag.description}</span>}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Editor contenteditable */}
-      <div
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        className="nowheel nopan nodrag"
-        onKeyUp={updateFormats}
-        onMouseUp={updateFormats}
-        onFocus={updateFormats}
-        onClick={()=>setShowBlockMenu(false)}
-        data-placeholder='Escribe aquí tu texto…'
-        style={{
-          flex:1, padding:'12px 14px', outline:'none',
-          color:'rgba(255,255,255,0.82)', fontSize:13, lineHeight:1.7,
-          fontFamily:'Plus Jakarta Sans,sans-serif',
-          overflowY:'auto', minHeight:120,
-          caretColor: C_TEXT,
-        }}
-      />
+      {/* Chat messages */}
+      <div ref={chatRef} className="nowheel nopan nodrag" onClick={()=>setAgMenu(false)}
+        style={{flex:1,overflowY:'auto',padding:'10px',display:'flex',flexDirection:'column',gap:8,minHeight:160}}>
+        {messages.length===0&&(
+          <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+            color:'rgba(255,255,255,0.18)',gap:8,textAlign:'center',padding:'20px 10px'}}>
+            <Bot size={28} style={{opacity:0.25}}/>
+            <p style={{fontSize:11,lineHeight:1.6,maxWidth:220,margin:0,whiteSpace:'pre-line'}}>
+              {selectedAgent?`${selectedAgent.name} listo.\nPídele crear imágenes, videos o campañas.`:'Selecciona un agente para comenzar.'}
+            </p>
+          </div>
+        )}
+        {messages.map((m,i)=>(
+          <div key={i} style={{display:'flex',flexDirection:'column',alignItems:m.role==='user'?'flex-end':'flex-start'}}>
+            <div style={{maxWidth:'88%',padding:'8px 12px',
+              borderRadius:m.role==='user'?'14px 14px 4px 14px':'14px 14px 14px 4px',
+              background:m.role==='user'?`linear-gradient(135deg,${C_AGENT}50,${C_AGENT}30)`:'rgba(255,255,255,0.06)',
+              border:m.role==='user'?`1px solid ${C_AGENT}40`:'1px solid rgba(255,255,255,0.08)',
+              fontSize:12,lineHeight:1.6,color:'rgba(255,255,255,0.88)',wordBreak:'break-word'}}>
+              {m.content}
+            </div>
+            {m.actions?.length>0&&(
+              <div style={{marginTop:4,fontSize:10,color:C_AGENT,display:'flex',alignItems:'center',gap:4}}>
+                <Sparkles size={9}/>{m.actions.length} nodo{m.actions.length>1?'s':''} creado{m.actions.length>1?'s':''}
+              </div>
+            )}
+          </div>
+        ))}
+        {running&&(
+          <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',
+            background:'rgba(255,255,255,0.04)',borderRadius:12,maxWidth:'60%',
+            border:'1px solid rgba(255,255,255,0.06)'}}>
+            <Loader2 size={12} style={{animation:'spin 1s linear infinite',color:C_AGENT}}/>
+            <span style={{fontSize:11,color:'rgba(255,255,255,0.4)'}}>{selectedAgent?.name||'Agente'} pensando…</span>
+          </div>
+        )}
+      </div>
 
-      {/* CSS inline para placeholder + headings */}
-      <style>{`
-        [data-placeholder]:empty:before {
-          content: attr(data-placeholder);
-          color: rgba(255,255,255,0.15);
-          pointer-events: none;
-        }
-        [contenteditable] h1 { font-size:18px; font-weight:700; margin:4px 0; color:rgba(255,255,255,0.9); }
-        [contenteditable] h2 { font-size:15px; font-weight:700; margin:4px 0; color:rgba(255,255,255,0.85); }
-        [contenteditable] h3 { font-size:13px; font-weight:600; margin:4px 0; color:rgba(255,255,255,0.8); }
-        [contenteditable] ul { padding-left:18px; margin:4px 0; }
-        [contenteditable] ol { padding-left:18px; margin:4px 0; }
-        [contenteditable] b, [contenteditable] strong { color:rgba(255,255,255,0.95); }
-      `}</style>
+      {/* Input */}
+      <div className="nowheel nopan nodrag" style={{padding:'8px 10px',borderTop:'1px solid rgba(255,255,255,0.05)',
+        display:'flex',gap:6,flexShrink:0,alignItems:'flex-end'}}>
+        <textarea value={input} onChange={e=>setInput(e.target.value)}
+          onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}
+          placeholder={selectedAgent?`Escríbele a ${selectedAgent.name}… (Enter para enviar)`:'Selecciona un agente…'}
+          disabled={!selectedAgent||running} rows={2}
+          style={{flex:1,background:'rgba(255,255,255,0.05)',border:`1px solid ${C_AGENT}30`,
+            borderRadius:10,padding:'8px 10px',color:'rgba(255,255,255,0.85)',
+            fontSize:12,lineHeight:1.5,resize:'none',outline:'none',
+            fontFamily:'Plus Jakarta Sans,sans-serif',caretColor:C_AGENT,
+            transition:`border-color 150ms ${SPRING}`}}
+          onFocus={e=>e.target.style.borderColor=`${C_AGENT}70`}
+          onBlur={e=>e.target.style.borderColor=`${C_AGENT}30`}/>
+        <button onClick={send} disabled={!selectedAgent||!input.trim()||running} style={{
+          width:34,height:34,borderRadius:10,border:'none',cursor:'pointer',
+          background:(!selectedAgent||!input.trim()||running)?'rgba(255,255,255,0.06)':C_AGENT,
+          display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
+          transition:`all 150ms ${SPRING}`}}>
+          {running
+            ?<Loader2 size={14} style={{animation:'spin 1s linear infinite',color:'#fff'}}/>
+            :<Send size={14} color={!selectedAgent||!input.trim()?'rgba(255,255,255,0.3)':'#fff'}/>}
+        </button>
+      </div>
+      <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
     </Shell>
   )
 }
@@ -2785,6 +2788,34 @@ export default function App() {
   const [globalStyleId, setGlobalStyleId] = useState(null)
   const [clearConfirm, setClearConfirm]   = useState(false)
   const [lightboxItem, setLightboxItem]   = useState(null)
+
+  // ── Auto-save canvas cada 30s + restore al login ─────────────────────────
+  useEffect(() => {
+    const token = localStorage.getItem('fai_token')
+    if (!token) return
+    // Cargar canvas guardado
+    fetch(`${SERVER}/api/canvas`, { headers:{ Authorization:`Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.nodes?.length) {
+          const del = nid => setNodes(nds => nds.filter(n => n.id !== nid))
+          tmplLoad({ nodes: d.nodes, edges: d.edges || [] }, setNodes, setEdges, del, true)
+        }
+      })
+      .catch(() => {})
+  }, [authUser])
+
+  useEffect(() => {
+    const token = localStorage.getItem('fai_token')
+    if (!token || !nodes.length) return
+    const timer = setTimeout(() => {
+      fetch(`${SERVER}/api/canvas`, {
+        method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ nodes, edges }),
+      }).catch(() => {})
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [nodes, edges])
 
   // ── Lightbox listener global ──────────────────────────────────────────────
   useEffect(() => Bus.on('openLightbox', setLightboxItem), [])
