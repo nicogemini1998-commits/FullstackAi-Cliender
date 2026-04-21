@@ -2158,13 +2158,43 @@ const PromptListNode = ({ id, data }) => {
   const [busy, setBusy]       = useState(false)
   const [done, setDone]       = useState(0)
 
-  // Recibir prompts del terminal via data
+  // Recibir prompts (del terminal o del agente)
   useEffect(() => {
     if (!data.incomingPrompts?.length) return
-    setPrompts(data.incomingPrompts)
+    const incoming = data.incomingPrompts
+    const shouldAutoRun = !!data.autoRun
+    setPrompts(incoming)
     setNodes(nds => nds.map(n => n.id === id
-      ? { ...n, data: { ...n.data, incomingPrompts: null } } : n))
+      ? { ...n, data: { ...n.data, incomingPrompts: null, autoRun: false } } : n))
+    if (shouldAutoRun) {
+      // Auto-ejecutar sin que el usuario haga clic
+      setTimeout(() => Bus.emit('promptlist:autorun', { nodeId: id }), 200)
+    }
   }, [data.incomingPrompts])
+
+  // Escuchar evento de auto-run desde el agente
+  useEffect(() => {
+    return Bus.on('promptlist:autorun', ({ nodeId }) => {
+      if (nodeId !== id) return
+      setPrompts(cur => {
+        if (!cur.length) return cur
+        // Disparar handleRun con los prompts actuales
+        const targets = getEdges()
+          .filter(e => e.source === id)
+          .map(e => getNode(e.target))
+          .filter(n => n?.type === 'image')
+        if (!targets.length) return cur
+        setBusy(true); setDone(0)
+        targets.forEach(target => {
+          setNodes(nds => nds.map(n => n.id === target.id
+            ? { ...n, data: { ...n.data, batchPrompts: cur, autoTrigger: true, incomingPrompt: cur[0] } }
+            : n))
+        })
+        setTimeout(() => { setBusy(false); setDone(cur.length) }, 1000)
+        return cur
+      })
+    })
+  }, [id, getEdges, getNode, setNodes])
 
   // Sincronizar prompts en data para que los edges los lean
   useEffect(() => {
@@ -2446,32 +2476,71 @@ const TextNode = ({ id, data }) => {
 
   const executeActions = (actions, sourceId) => {
     const srcNode = getNode(sourceId)
-    const bx = (srcNode?.position?.x || 0) + (srcNode?.measured?.width || 380) + 60
+    const bx = (srcNode?.position?.x || 0) + (srcNode?.measured?.width || 390) + 60
     const by = (srcNode?.position?.y || 0)
     const newNodes = [], newEdges = []
+    const ts = Date.now()
+
     actions.forEach((act, i) => {
-      const nid = `agent-${Date.now()}-${i}`
-      if (act.type === 'create_image') {
-        newNodes.push({ id:nid, type:'image', position:{x:bx, y:by+i*310},
-          style:{width:340,height:300},
-          data:{ label:`Imagen — ${selectedAgent?.name||'Agente'}`,
-            autoPrompt:act.prompt, autoModel:act.model||'nano-banana-pro',
-            autoQty:act.qty||4, autoAr:act.ar||'1:1' } })
-        newEdges.push({ id:`e-${sourceId}-${nid}`, source:sourceId, target:nid, type:'gradient' })
+      const yOff = i * 420
+
+      if (act.type === 'create_prompts') {
+        // UN PromptListNode con todos los prompts + UN ImageNode conectado → auto-ejecuta
+        const plId  = `pl-${ts}-${i}`
+        const imgId = `img-${ts}-${i}`
+
+        newNodes.push({
+          id: plId, type: 'promptList',
+          position: { x: bx, y: by + yOff },
+          style: { width: 300, height: Math.min(80 + (act.prompts?.length||1)*36, 400) },
+          data: {
+            prompts: act.prompts || [],
+            incomingPrompts: act.prompts || [],
+            autoRun: true,
+          },
+        })
+        newNodes.push({
+          id: imgId, type: 'image',
+          position: { x: bx + 340, y: by + yOff },
+          style: { width: 340, height: 320 },
+          data: {
+            label: `${selectedAgent?.name||'Agente'} · ${act.model||'nano-banana-pro'}`,
+            autoModel: act.model || 'nano-banana-pro',
+            autoAr:    act.ar    || '1:1',
+          },
+        })
+        newEdges.push({ id:`e-${sourceId}-${plId}`,  source:sourceId, target:plId,  type:'gradient' })
+        newEdges.push({ id:`e-${plId}-${imgId}`,     source:plId,     target:imgId, type:'gradient' })
       }
+
       if (act.type === 'create_video') {
-        newNodes.push({ id:nid, type:'video', position:{x:bx, y:by+i*330},
-          style:{width:340,height:320},
-          data:{ label:`Video — ${selectedAgent?.name||'Agente'}`,
-            autoPrompt:act.prompt, autoModel:act.model||'kling-2.6/text-to-video',
-            autoAr:act.ar||'16:9', autoDuration:act.duration||5 } })
-        newEdges.push({ id:`e-${sourceId}-${nid}`, source:sourceId, target:nid, type:'gradient' })
+        const vid = `vid-${ts}-${i}`
+        newNodes.push({
+          id: vid, type: 'video',
+          position: { x: bx, y: by + yOff },
+          style: { width: 340, height: 320 },
+          data: {
+            label: `Video — ${selectedAgent?.name||'Agente'}`,
+            autoPrompt:   act.prompt,
+            autoModel:    act.model    || 'kling-2.6/text-to-video',
+            autoAr:       act.ar       || '16:9',
+            autoDuration: act.duration || 5,
+            autoTrigger:  true,
+          },
+        })
+        newEdges.push({ id:`e-${sourceId}-${vid}`, source:sourceId, target:vid, type:'gradient' })
       }
     })
-    if (newNodes.length) {
-      addNodes(newNodes); addEdges(newEdges)
-      setTimeout(() => newNodes.forEach(n => Bus.emit('agent:auto-execute', { nodeId:n.id, ...n.data })), 400)
-    }
+
+    if (!newNodes.length) return
+    addNodes(newNodes)
+    addEdges(newEdges)
+    // Auto-ejecutar PromptListNodes después de montarse
+    setTimeout(() => {
+      newNodes.filter(n => n.type === 'promptList').forEach(n => {
+        Bus.emit('promptlist:autorun', { nodeId: n.id })
+      })
+    }, 500)
   }
 
   const send = async () => {

@@ -66,41 +66,41 @@ async function initSchema() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
   `)
-  // Agente /shaq por defecto si no existe
+  // Agente /shaq — crear o actualizar con el system_prompt nuevo
+  const shaqPrompt = `You are /shaq, a creative UGC and marketing specialist. You ONLY respond with valid JSON, no other text.
+
+RESPONSE FORMAT (always this exact structure):
+{"reply":"short message to user in Spanish","actions":[]}
+
+When user asks for images, include ONE action of type "create_prompts":
+{"reply":"Generando 5 imágenes UGC para tu campaña...","actions":[{"type":"create_prompts","prompts":["detailed english prompt 1","detailed english prompt 2","detailed english prompt 3"],"model":"nano-banana-pro","ar":"9:16"}]}
+
+When user asks for video, include action of type "create_video":
+{"reply":"Creando el video...","actions":[{"type":"create_video","prompt":"detailed english prompt","model":"kling-2.6/text-to-video","ar":"16:9","duration":5}]}
+
+STRICT RULES:
+1. ALWAYS respond with JSON only — no text outside the JSON
+2. For images: use create_prompts with ALL prompts inside ONE action's "prompts" array
+3. Never use multiple create_prompts actions — put all prompts in one array
+4. Prompts must be detailed, in English, describing the exact visual
+5. Vary angles, lighting, scenarios between prompts
+6. aspect ratios: 9:16 for TikTok/Reels, 1:1 for feed, 16:9 for YouTube
+7. Models available: nano-banana-pro, nano-banana-2, flux-2/pro-text-to-image, ideogram/v3-text-to-image
+8. When user asks for N images, generate exactly N prompts
+
+EXAMPLE — User: "create 3 UGC images of iPhone 15 for Instagram":
+{"reply":"Generando 3 imágenes UGC del iPhone 15 para Instagram...","actions":[{"type":"create_prompts","prompts":["Close-up shot of hands holding iPhone 15 Pro in natural titanium, morning coffee shop background, warm bokeh lighting, authentic lifestyle UGC style, Instagram aesthetic","Overhead flat lay of iPhone 15 next to autumn leaves and coffee cup, minimalist composition, natural daylight, clean aesthetic","Young person smiling at iPhone 15 screen, candid street photography style, golden hour lighting, authentic moment, lifestyle content"],"model":"nano-banana-pro","ar":"1:1"}]}`
+
   const { rowCount } = await db.query("SELECT 1 FROM agents WHERE name='/shaq' LIMIT 1")
   if (!rowCount) {
-    await db.query(`
-      INSERT INTO agents (name, description, system_prompt, model, max_tokens)
-      VALUES ($1, $2, $3, $4, $5)
-    `, [
-      '/shaq',
-      'Agente creativo UGC — crea campañas de imagen y video automáticamente',
-      `Eres /shaq, un agente creativo especializado en campañas visuales UGC y marketing de producto.
-Cuando el usuario pide crear imágenes o videos, SIEMPRE responde con JSON válido en este formato exacto:
-{"reply": "tu explicación al usuario", "actions": [...]}
-
-Acciones disponibles:
-- Imagen: {"type":"create_image","prompt":"...","model":"nano-banana-pro","qty":5,"ar":"9:16"}
-- Video:  {"type":"create_video","prompt":"...","model":"kling-2.6/text-to-video","ar":"16:9","duration":5}
-
-Modelos de imagen: nano-banana-pro, nano-banana-2, flux-2/pro-text-to-image, ideogram/v3-text-to-image
-Modelos de video:  kling-2.6/text-to-video, wan/2-7-text-to-video, sora-2-text-to-video
-Aspect ratios imagen: 1:1, 4:5, 9:16, 16:9, 4:3, 3:2
-Aspect ratios video:  16:9, 9:16, 1:1
-
-Si el usuario NO pide crear contenido, responde con: {"reply":"tu respuesta","actions":[]}
-
-Especialidades:
-- Campañas UGC (User Generated Content)
-- Ángulos de producto variados
-- Prompts para contenido viral en redes sociales
-- Adaptación de estilo por plataforma (TikTok, Instagram, YouTube)
-
-IMPORTANTE: Cuando el usuario pida N imágenes de un producto, distribuye en varias acciones de 5-10 imágenes c/u con prompts variados (ángulos, escenarios, estilos distintos).`,
-      'claude-haiku-4-5-20251001',
-      3000
-    ])
-    console.log('🤖 Agente /shaq creado por defecto')
+    await db.query(
+      'INSERT INTO agents (name, description, system_prompt, model, max_tokens) VALUES ($1,$2,$3,$4,$5)',
+      ['/shaq', 'Agente creativo UGC — genera listas de prompts y ejecuta todo automáticamente', shaqPrompt, 'claude-haiku-4-5-20251001', 4000]
+    )
+    console.log('🤖 Agente /shaq creado')
+  } else {
+    await db.query('UPDATE agents SET system_prompt=$1, max_tokens=4000 WHERE name=$2', [shaqPrompt, '/shaq'])
+    console.log('🤖 Agente /shaq actualizado')
   }
 }
 
@@ -363,7 +363,7 @@ app.post('/api/agent/run', requireAuth, async (req, res) => {
 
     const rawText = data.content?.[0]?.text || ''
 
-    // Intentar parsear JSON si el agente lo devuelve
+    // Parsear JSON de la respuesta del agente
     let reply = rawText
     let actions = []
     try {
@@ -371,10 +371,25 @@ app.post('/api/agent/run', requireAuth, async (req, res) => {
       const jsonEnd   = rawText.lastIndexOf('}')
       if (jsonStart !== -1 && jsonEnd !== -1) {
         const parsed = JSON.parse(rawText.slice(jsonStart, jsonEnd + 1))
-        reply   = parsed.reply   || rawText
-        actions = parsed.actions || []
+        reply = parsed.reply || rawText
+
+        // Normalizar acciones — si vienen sin "type" pero con "prompts" array, corregir
+        const raw = parsed.actions || []
+        actions = raw.map(a => {
+          if (a.type === 'create_prompts' || a.type === 'create_video') return a
+          // Acción sin type — intentar detectar si es lista de prompts
+          if (Array.isArray(a.prompts)) return { type: 'create_prompts', ...a }
+          if (a.prompt) return { type: 'create_prompts', prompts: [a.prompt], model: a.model, ar: a.ar }
+          return null
+        }).filter(Boolean)
+
+        // Si el agente devolvió prompts directamente (sin actions wrapper)
+        if (!actions.length && parsed.prompts?.length) {
+          actions = [{ type: 'create_prompts', prompts: parsed.prompts,
+            model: parsed.model || 'nano-banana-pro', ar: parsed.ar || '1:1' }]
+        }
       }
-    } catch { /* respuesta de texto plano — ok */ }
+    } catch { /* texto plano — ok */ }
 
     res.json({ reply, actions, model, agentName: agent?.name || 'Asistente' })
   } catch (err) {
