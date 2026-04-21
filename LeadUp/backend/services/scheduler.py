@@ -10,7 +10,8 @@ from .apollo_leads import fetch_leads_for_user, save_lead_to_db, CLIENDER_SECTOR
 
 _scheduler: AsyncIOScheduler | None = None
 
-LEADS_PER_USER  = 12   # leads nuevos por usuario/día
+LEADS_PER_USER  = 15   # leads nuevos por usuario/día
+MAX_PER_SESSION = 20   # máximo leads por sesión (nunca superar)
 RETRY_AFTER_DAYS = 3   # reintentar no_answer tras X días
 MAX_RETRIES     = 3    # máx intentos antes de descartar
 
@@ -98,46 +99,90 @@ async def _daily_assignment():
     today_sector = CLIENDER_SECTORS[day % len(CLIENDER_SECTORS)]
     city         = _SPAIN_CITIES[day % len(_SPAIN_CITIES)]
 
-    print(f"   Sector hoy: {today_sector['tag']} en {city} (España general)")
+    # Cada usuario recibe su propio fetch de leads (ciudad diferente para variedad)
+    for idx, user in enumerate(users):
+        uid  = str(user["id"])
+        name = user["name"]
 
-    # Obtener leads de Apollo para todos los usuarios
-    leads_needed = LEADS_PER_USER * len(users)
-    raw_leads = await fetch_leads_for_user(today_sector["tag"], city, qty=leads_needed + 10)
-    print(f"   Leads obtenidos de Apollo: {len(raw_leads)}")
+        # Comprobar cuántos ya tiene hoy
+        async with db_conn() as conn:
+            existing_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM lu_daily_assignments WHERE user_id=$1 AND assigned_date=CURRENT_DATE",
+                uid
+            )
+        already = int(existing_count or 0)
+        can_add = max(0, MAX_PER_SESSION - already)
+        if can_add == 0:
+            print(f"   {name}: ya tiene {already} leads (máx {MAX_PER_SESSION})")
+            continue
 
-    # Guardar en DB y distribuir
-    company_ids = []
-    for lead in raw_leads:
-        cid = await save_lead_to_db(lead)
-        if cid and not await _already_assigned(cid):
-            company_ids.append(cid)
-
-    random.shuffle(company_ids)
-
-    for i, user in enumerate(users):
-        uid = str(user["id"])
-
-        # 1. Reintentos
+        # Reintentos primero
         retries = await _get_retry_leads(uid, limit=3)
         for cid in retries:
             await _assign_to_user(uid, cid)
-            # Incrementar intento
             async with db_conn() as conn:
                 await conn.execute(
                     "UPDATE lu_companies SET attempt_count=attempt_count+1, next_attempt_date=NULL WHERE id=$1",
                     cid
                 )
 
-        # 2. Leads nuevos
-        batch_start = i * LEADS_PER_USER
-        batch = company_ids[batch_start:batch_start + LEADS_PER_USER]
-        for cid in batch:
-            await _assign_to_user(uid, cid)
+        # Fetch independiente — ciudad rotada por usuario para variedad
+        city_idx     = (day + idx) % len(_SPAIN_CITIES)
+        user_city    = _SPAIN_CITIES[city_idx]
+        sector_idx   = (day + idx) % len(CLIENDER_SECTORS)
+        user_sector  = CLIENDER_SECTORS[sector_idx]
+        slots        = min(LEADS_PER_USER - len(retries), can_add - len(retries))
+
+        print(f"   {name}: buscando {slots} leads en {user_sector['tag']}/{user_city}...")
+        raw = await fetch_leads_for_user(user_sector["tag"], user_city, qty=slots + 5)
+
+        batch = []
+        for lead in raw:
+            if len(batch) >= slots:
+                break
+            cid = await save_lead_to_db(lead)
+            if cid and not await _already_assigned(cid):
+                await _assign_to_user(uid, cid)
+                batch.append(cid)
 
         total = len(retries) + len(batch)
-        print(f"   {user['name']}: {len(retries)} reintentos + {len(batch)} nuevos = {total} leads")
+        print(f"   {name}: {len(retries)} reintentos + {len(batch)} nuevos = {total} leads")
 
     print("✅ Asignación diaria completada")
+
+
+async def assign_more_for_user(user_id: str, user_name: str) -> int:
+    """
+    Asigna más leads a un usuario específico cuando ya agotó su cola.
+    Respeta el máximo de MAX_PER_SESSION por sesión.
+    """
+    async with db_conn() as conn:
+        existing = await conn.fetchval(
+            "SELECT COUNT(*) FROM lu_daily_assignments WHERE user_id=$1 AND assigned_date=CURRENT_DATE",
+            user_id
+        )
+    already = int(existing or 0)
+    can_add = MAX_PER_SESSION - already
+    if can_add <= 0:
+        return 0
+
+    day = date.today().toordinal()
+    today_sector = CLIENDER_SECTORS[day % len(CLIENDER_SECTORS)]
+    city         = _SPAIN_CITIES[(day + already) % len(_SPAIN_CITIES)]  # ciudad diferente para variedad
+
+    qty = min(can_add, LEADS_PER_USER)
+    raw_leads = await fetch_leads_for_user(today_sector["tag"], city, qty=qty + 5)
+    assigned = 0
+    for lead in raw_leads:
+        if assigned >= can_add:
+            break
+        cid = await save_lead_to_db(lead)
+        if cid and not await _already_assigned(cid):
+            await _assign_to_user(user_id, cid)
+            assigned += 1
+
+    print(f"   Más leads para {user_name}: {assigned} asignados")
+    return assigned
 
 
 # ── Retención 10 días ─────────────────────────────────────────────────────────

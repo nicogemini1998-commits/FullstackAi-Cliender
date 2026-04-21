@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from typing import Optional
 from ..database import db_conn
 from ..auth import verify_token, require_admin
-from ..services.scheduler import trigger_daily_assignment
+from ..services.scheduler import trigger_daily_assignment, assign_more_for_user, MAX_PER_SESSION
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
@@ -172,5 +172,32 @@ async def manual_assign(user: dict = Depends(require_admin)):
     try:
         await trigger_daily_assignment()
         return {"ok": True, "message": "Asignación completada"}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/request-more")
+async def request_more_leads(user: dict = Depends(verify_token)):
+    """Cualquier usuario: pedir más leads cuando ha agotado su cola (hasta MAX_PER_SESSION)."""
+    uid  = user.get("id")
+    name = user.get("email", "").split("@")[0]
+
+    async with db_conn() as conn:
+        existing = await conn.fetchval(
+            "SELECT COUNT(*) FROM lu_daily_assignments WHERE user_id=$1 AND assigned_date=CURRENT_DATE",
+            uid
+        )
+    already = int(existing or 0)
+    can_add = MAX_PER_SESSION - already
+
+    if can_add <= 0:
+        return {"ok": False, "message": f"Ya tienes el máximo de {MAX_PER_SESSION} leads hoy.", "assigned": 0}
+
+    try:
+        assigned = await assign_more_for_user(uid, name)
+        if assigned > 0:
+            return {"ok": True, "assigned": assigned,
+                    "message": f"{assigned} nuevos leads asignados"}
+        return {"ok": False, "message": "No hay más leads disponibles ahora. Inténtalo en unos minutos.", "assigned": 0}
     except Exception as e:
         raise HTTPException(500, str(e))

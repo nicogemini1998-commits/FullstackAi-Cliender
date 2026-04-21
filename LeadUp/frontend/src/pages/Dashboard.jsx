@@ -615,10 +615,12 @@ export default function Dashboard() {
   const [selIdx, setSelIdx]         = useState(0)
   const [view, setView]             = useState('centralita')
   const [loading, setLoading]       = useState(true)
-  const [assigning, setAssigning]   = useState(false)
-  const [lastAssign, setLastAssign] = useState('')
-  const [mobileDetail, setMobileDetail] = useState(false) // mobile: mostrar detalle
-  const [isMobile, setIsMobile]     = useState(window.innerWidth < 768)
+  const [assigning, setAssigning]     = useState(false)
+  const [lastAssign, setLastAssign]   = useState('')
+  const [requesting, setRequesting]   = useState(false)
+  const [reqMsg, setReqMsg]           = useState('')
+  const [mobileDetail, setMobileDetail] = useState(false)
+  const [isMobile, setIsMobile]       = useState(window.innerWidth < 768)
 
   useEffect(() => {
     const fn = () => setIsMobile(window.innerWidth < 768)
@@ -648,6 +650,21 @@ export default function Dashboard() {
     } catch(e) { console.error('assign error', e) }
     finally { setAssigning(false) }
   }
+
+  const handleRequestMore = async () => {
+    setRequesting(true); setReqMsg('')
+    try {
+      const r = await leadsApi.requestMore()
+      setReqMsg(r.data.message)
+      if (r.data.ok) { await load(); setSelIdx(0) }
+    } catch { setReqMsg('Error al pedir leads') }
+    finally { setRequesting(false) }
+  }
+
+  // Cola vacía: todos pendientes/done o 0 leads
+  const queueDone = ordered.length > 0 &&
+    ordered.every(l => ['agendado','no_interest'].includes(l.call_status))
+  const queueEmpty = ordered.length === 0 && !loading
 
   const handleStatus = useCallback(async (assignmentId, status, notes) => {
     await leadsApi.updateStatus(assignmentId, status, notes)
@@ -863,15 +880,40 @@ export default function Dashboard() {
                         animationDelay:`${i*120}ms`}}/>
                     ))}
                   </div>
-                ) : ordered.length === 0 ? (
+                ) : (queueEmpty || queueDone) ? (
                   <div style={{display:'flex',flexDirection:'column',alignItems:'center',
-                    justifyContent:'center',height:'100%',textAlign:'center',padding:24}}>
-                    <Phone size={32} style={{color:'rgba(255,255,255,0.1)',marginBottom:12}}/>
-                    <p className="font-mono text-xs tracking-widest"
-                      style={{color:'rgba(255,255,255,0.18)'}}>SIN LEADS HOY</p>
-                    {user?.role==='admin' && (
-                      <p className="text-xs mt-2" style={{color:'rgba(255,255,255,0.12)'}}>
-                        Pulsa "Asignar leads"
+                    justifyContent:'center',height:'100%',textAlign:'center',padding:20,gap:12}}>
+                    <div style={{width:48,height:48,borderRadius:14,
+                      background:'rgba(59,130,246,0.08)',border:'1px solid rgba(59,130,246,0.15)',
+                      display:'flex',alignItems:'center',justifyContent:'center'}}>
+                      <Phone size={20} style={{color:'rgba(59,130,246,0.5)'}}/>
+                    </div>
+                    <div>
+                      <p className="font-mono text-xs font-bold tracking-widest mb-1"
+                        style={{color:'rgba(255,255,255,0.35)'}}>
+                        {queueDone ? '¡COLA COMPLETADA!' : 'SIN LEADS HOY'}
+                      </p>
+                      <p className="text-xs" style={{color:'rgba(255,255,255,0.2)'}}>
+                        {queueDone ? 'Excelente trabajo 💪' : 'Solicita tu lista'}
+                      </p>
+                    </div>
+                    {/* Botón pedir más — visible para todos */}
+                    <button onClick={handleRequestMore} disabled={requesting}
+                      className="glass-btn glass-btn-blue w-full flex items-center justify-center gap-2"
+                      style={{padding:'10px 0',fontSize:12,fontWeight:700,letterSpacing:'0.04em',
+                        marginTop:4}}>
+                      {requesting
+                        ? <><RotateCcw size={12} style={{animation:'spin 1s linear infinite'}}/>BUSCANDO...</>
+                        : <><Zap size={12}/>PEDIR LEADS</>}
+                    </button>
+                    {reqMsg && (
+                      <p className="text-xs font-mono" style={{color:'rgba(255,255,255,0.4)'}}>
+                        {reqMsg}
+                      </p>
+                    )}
+                    {isAdmin && !queueDone && (
+                      <p className="text-xs" style={{color:'rgba(255,255,255,0.15)'}}>
+                        o usa "Asignar leads" para el equipo
                       </p>
                     )}
                   </div>

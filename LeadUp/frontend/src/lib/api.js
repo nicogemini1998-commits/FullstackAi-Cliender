@@ -32,6 +32,7 @@ export const leads = {
   updateStatus:(id, status, notes)   => api.patch(`/leads/${id}/status`, { status, notes }),
   saveNotes:   (id, notes)           => api.patch(`/leads/${id}/notes`, { notes }),
   assignNow:   ()                    => api.post('/leads/assign-now'),
+  requestMore: ()                    => api.post('/leads/request-more'),
 }
 
 export const companies = {
