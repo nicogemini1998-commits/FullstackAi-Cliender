@@ -75,6 +75,29 @@ async function initSchema() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_user_images_user ON user_images(user_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS clients (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      color TEXT DEFAULT '#60a5fa',
+      avatar TEXT DEFAULT '',
+      created_by TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    -- Agregar client_id a las tablas existentes si no existe
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='user_canvas' AND column_name='client_id') THEN
+        ALTER TABLE user_canvas DROP CONSTRAINT IF EXISTS user_canvas_pkey;
+        ALTER TABLE user_canvas ADD COLUMN IF NOT EXISTS client_id TEXT DEFAULT '';
+        ALTER TABLE user_canvas ADD PRIMARY KEY (user_id, client_id);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='user_images' AND column_name='client_id') THEN
+        ALTER TABLE user_images ADD COLUMN client_id TEXT DEFAULT '';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='templates' AND column_name='client_id') THEN
+        ALTER TABLE templates ADD COLUMN client_id TEXT DEFAULT '';
+      END IF;
+    END $$;
   `)
   // Agente /shaq — crear o actualizar con el system_prompt nuevo
   const shaqPrompt = `You are /shaq, a creative UGC and marketing specialist. You ONLY respond with valid JSON, no other text.
@@ -171,31 +194,32 @@ app.get('/api/users', requireAuth, async (req, res) => {
 
 // ─── PLANTILLAS ───────────────────────────────────────────────────────────────
 // ─── PLANTILLAS ───────────────────────────────────────────────────────────────
-// GET: propias + globales (admin). Incluye flag is_global + can_edit
+// GET: plantillas del cliente activo + globales
 app.get('/api/templates', requireAuth, async (req, res) => {
   if (!dbReady) return res.json([])
-  const isAdmin = req.user.role === 'admin'
-  // Globales (creadas por admins) + propias
+  const isAdmin  = req.user.role === 'admin'
+  const clientId = req.query.client_id || ''
   const { rows } = await db.query(`
     SELECT id, name, nodes, edges, thumbnail, created_at, updated_at,
-           is_global, user_id,
+           is_global, user_id, client_id,
            (user_id = $1 OR (is_global AND $2)) AS can_edit
     FROM templates
-    WHERE user_id = $1 OR is_global = true
+    WHERE (user_id = $1 AND client_id = $3) OR (is_global = true AND client_id = $3) OR (is_global = true AND client_id = '')
     ORDER BY is_global DESC, updated_at DESC
-  `, [req.user.id, isAdmin])
+  `, [req.user.id, isAdmin, clientId])
   res.json(rows)
 })
 
-// POST: cualquier usuario crea la suya. Admin puede marcarla global
+// POST: crear plantilla con client_id
 app.post('/api/templates', requireAuth, async (req, res) => {
   if (!dbReady) return res.status(503).json({ error: 'DB no disponible' })
-  const { name, nodes, edges, is_global } = req.body
+  const { name, nodes, edges, is_global, client_id } = req.body
   if (!name) return res.status(400).json({ error: 'Nombre requerido' })
-  const global = req.user.role === 'admin' ? !!is_global : false
+  const global   = req.user.role === 'admin' ? !!is_global : false
+  const clientId = client_id || ''
   const { rows } = await db.query(
-    'INSERT INTO templates(user_id,name,nodes,edges,is_global) VALUES($1,$2,$3,$4,$5) RETURNING *',
-    [req.user.id, name, JSON.stringify(nodes||[]), JSON.stringify(edges||[]), global]
+    'INSERT INTO templates(user_id,name,nodes,edges,is_global,client_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
+    [req.user.id, name, JSON.stringify(nodes||[]), JSON.stringify(edges||[]), global, clientId]
   )
   res.json(rows[0])
 })
@@ -408,27 +432,66 @@ app.post('/api/agent/run', requireAuth, async (req, res) => {
   }
 })
 
+// ─── CLIENTES ────────────────────────────────────────────────────────────────
+app.get('/api/clients', requireAuth, async (req, res) => {
+  if (!dbReady) return res.json([])
+  const { rows } = await db.query('SELECT * FROM clients ORDER BY name')
+  res.json(rows)
+})
+
+app.post('/api/clients', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo admins' })
+  if (!dbReady) return res.status(503).json({ error: 'DB no disponible' })
+  const { name, description, color, avatar } = req.body
+  if (!name) return res.status(400).json({ error: 'name requerido' })
+  const { rows } = await db.query(
+    'INSERT INTO clients(name,description,color,avatar,created_by) VALUES($1,$2,$3,$4,$5) RETURNING *',
+    [name, description||'', color||'#60a5fa', avatar||'', req.user.id]
+  )
+  res.json(rows[0])
+})
+
+app.put('/api/clients/:id', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo admins' })
+  if (!dbReady) return res.status(503).json({ error: 'DB no disponible' })
+  const { name, description, color, avatar } = req.body
+  const { rows } = await db.query(
+    'UPDATE clients SET name=COALESCE($1,name),description=COALESCE($2,description),color=COALESCE($3,color),avatar=COALESCE($4,avatar) WHERE id=$5 RETURNING *',
+    [name, description, color, avatar, req.params.id]
+  )
+  if (!rows.length) return res.status(404).json({ error: 'No encontrado' })
+  res.json(rows[0])
+})
+
+app.delete('/api/clients/:id', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo admins' })
+  if (!dbReady) return res.json({ ok: true })
+  await db.query('DELETE FROM clients WHERE id=$1', [req.params.id])
+  res.json({ ok: true })
+})
+
 // ─── GALERÍA — historial de imágenes por usuario ─────────────────────────────
 app.post('/api/images', requireAuth, async (req, res) => {
   if (!dbReady) return res.json({ ok: true })
-  const { url, prompt, model, aspect_ratio } = req.body
+  const { url, prompt, model, aspect_ratio, client_id } = req.body
   if (!url) return res.status(400).json({ error: 'url requerida' })
-  // No guardar base64 (demasiado pesado) — solo URLs externas
   if (url.startsWith('data:')) return res.json({ ok: true, skipped: true })
   await db.query(
-    'INSERT INTO user_images(user_id, url, prompt, model, aspect_ratio) VALUES($1,$2,$3,$4,$5)',
-    [req.user.id, url, prompt||'', model||'', aspect_ratio||'1:1']
+    'INSERT INTO user_images(user_id, url, prompt, model, aspect_ratio, client_id) VALUES($1,$2,$3,$4,$5,$6)',
+    [req.user.id, url, prompt||'', model||'', aspect_ratio||'1:1', client_id||'']
   )
   res.json({ ok: true })
 })
 
 app.get('/api/images', requireAuth, async (req, res) => {
   if (!dbReady) return res.json([])
-  const limit = Math.min(parseInt(req.query.limit)||100, 500)
+  const limit  = Math.min(parseInt(req.query.limit)||100, 500)
   const offset = parseInt(req.query.offset)||0
+  const clientId = req.query.client_id || ''
   const { rows } = await db.query(
-    'SELECT id, url, prompt, model, aspect_ratio, created_at FROM user_images WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
-    [req.user.id, limit, offset]
+    `SELECT id, url, prompt, model, aspect_ratio, client_id, created_at FROM user_images
+     WHERE user_id=$1 AND client_id=$2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
+    [req.user.id, clientId, limit, offset]
   )
   res.json(rows)
 })
@@ -442,19 +505,24 @@ app.delete('/api/images/:id', requireAuth, async (req, res) => {
 // ─── CANVAS — auto-save/load por usuario ─────────────────────────────────────
 app.get('/api/canvas', requireAuth, async (req, res) => {
   if (!dbReady) return res.json({ nodes: [], edges: [] })
-  const { rows } = await db.query('SELECT nodes, edges FROM user_canvas WHERE user_id=$1', [req.user.id])
+  const clientId = req.query.client_id || ''
+  const { rows } = await db.query(
+    'SELECT nodes, edges FROM user_canvas WHERE user_id=$1 AND client_id=$2',
+    [req.user.id, clientId]
+  )
   if (!rows.length) return res.json({ nodes: [], edges: [] })
   res.json({ nodes: rows[0].nodes, edges: rows[0].edges })
 })
 
 app.post('/api/canvas', requireAuth, async (req, res) => {
   if (!dbReady) return res.json({ ok: true })
-  const { nodes, edges } = req.body
+  const { nodes, edges, client_id } = req.body
+  const clientId = client_id || ''
   await db.query(`
-    INSERT INTO user_canvas(user_id, nodes, edges, updated_at)
-    VALUES($1,$2,$3,NOW())
-    ON CONFLICT(user_id) DO UPDATE SET nodes=$2, edges=$3, updated_at=NOW()
-  `, [req.user.id, JSON.stringify(nodes||[]), JSON.stringify(edges||[])])
+    INSERT INTO user_canvas(user_id, client_id, nodes, edges, updated_at)
+    VALUES($1,$2,$3,$4,NOW())
+    ON CONFLICT(user_id, client_id) DO UPDATE SET nodes=$3, edges=$4, updated_at=NOW()
+  `, [req.user.id, clientId, JSON.stringify(nodes||[]), JSON.stringify(edges||[])])
   res.json({ ok: true })
 })
 

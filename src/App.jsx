@@ -188,6 +188,14 @@ const apiFetch = (path, opts = {}) => {
   })
 }
 
+// ── Cliente activo — persiste en localStorage ────────────────────────────────
+const getActiveClient = () => {
+  try { return JSON.parse(localStorage.getItem('fai_client') || 'null') } catch { return null }
+}
+const setActiveClient = (client) => {
+  localStorage.setItem('fai_client', client ? JSON.stringify(client) : 'null')
+}
+
 // ── Template System — API persistence ────────────────────────────────────────
 const tmplLoad = (tpl, setNodes, setEdges, deleteNodeFn, replace = true) => {
   const map = {}
@@ -1014,10 +1022,11 @@ const ImageNode = ({ id, data }) => {
       if (url.startsWith('data:')) return // no guardar base64
       const token = localStorage.getItem('fai_token')
       if (!token) return
+      const clientId = getActiveClient()?.id || ''
       fetch(`${SERVER}/api/images`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url, prompt, model: model.id, aspect_ratio: ar }),
+        body: JSON.stringify({ url, prompt, model: model.id, aspect_ratio: ar, client_id: clientId }),
       }).catch(() => {})
     }
 
@@ -1733,7 +1742,8 @@ const TemplatesPanel = ({ onClose, nodes, edges, setNodes, setEdges, deleteNode,
   const [loading, setLoading]     = useState(true)
 
   const refresh = async () => {
-    const r = await apiFetch('/api/templates')
+    const clientId = getActiveClient()?.id || ''
+    const r = await apiFetch(`/api/templates?client_id=${clientId}`)
     if (r.ok) { const d = await r.json(); setTemplates(d) }
   }
 
@@ -1742,7 +1752,8 @@ const TemplatesPanel = ({ onClose, nodes, edges, setNodes, setEdges, deleteNode,
   const handleSave = async (global = false) => {
     const safeName = name.trim() || `Canvas ${new Date().toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'})}`
     const safeNodes = nodes.map(({ data, ...rest }) => { const { onDelete, ...safe } = data||{}; return { ...rest, data: safe } })
-    await apiFetch('/api/templates', { method:'POST', body: JSON.stringify({ name: safeName, nodes: safeNodes, edges, is_global: global }) })
+    const clientId = getActiveClient()?.id || ''
+    await apiFetch('/api/templates', { method:'POST', body: JSON.stringify({ name: safeName, nodes: safeNodes, edges, is_global: global, client_id: clientId }) })
     setName(''); setSaved(true); setTimeout(() => setSaved(false), 2000)
     await refresh()
   }
@@ -2923,8 +2934,233 @@ function LoginScreen({ onLogin }) {
   )
 }
 
+// ── ClientsPanel — gestión y selección de clientes ───────────────────────────
+const CLIENT_COLORS = ['#60a5fa','#a78bfa','#34d399','#f97316','#ec4899','#f59e0b','#10b981','#ef4444']
+
+function ClientsPanel({ activeClient, onSelect, onClose, isAdmin }) {
+  const [clients, setClients]     = useState([])
+  const [creating, setCreating]   = useState(false)
+  const [editId, setEditId]       = useState(null)
+  const [form, setForm]           = useState({ name:'', description:'', color:'#60a5fa' })
+  const [saving, setSaving]       = useState(false)
+
+  useEffect(() => {
+    apiFetch('/api/clients').then(r => r.ok ? r.json() : []).then(setClients).catch(() => {})
+  }, [])
+
+  const save = async () => {
+    if (!form.name.trim()) return
+    setSaving(true)
+    try {
+      const method = editId ? 'PUT' : 'POST'
+      const path   = editId ? `/api/clients/${editId}` : '/api/clients'
+      const r = await apiFetch(path, { method, body: JSON.stringify(form) })
+      const d = await r.json()
+      if (editId) setClients(cs => cs.map(c => c.id === editId ? d : c))
+      else setClients(cs => [...cs, d])
+      setCreating(false); setEditId(null); setForm({ name:'', description:'', color:'#60a5fa' })
+    } finally { setSaving(false) }
+  }
+
+  const remove = async (id) => {
+    await apiFetch(`/api/clients/${id}`, { method: 'DELETE' })
+    setClients(cs => cs.filter(c => c.id !== id))
+    if (activeClient?.id === id) onSelect(null)
+  }
+
+  const startEdit = (c) => {
+    setEditId(c.id); setCreating(true)
+    setForm({ name: c.name, description: c.description, color: c.color })
+  }
+
+  return (
+    <div style={{
+      position:'fixed', top:0, left:0, bottom:0, width:360, zIndex:200,
+      background:'rgba(6,6,14,0.97)', backdropFilter:'blur(32px)',
+      borderRight:'1px solid rgba(255,255,255,0.08)',
+      display:'flex', flexDirection:'column',
+      boxShadow:'12px 0 48px rgba(0,0,0,0.6)',
+    }}>
+      {/* Header */}
+      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between',
+        padding:'16px 20px', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0}}>
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          <div style={{width:22, height:22, borderRadius:6,
+            background:'linear-gradient(135deg,rgba(96,165,250,0.3),rgba(167,139,250,0.2))',
+            border:'1px solid rgba(255,255,255,0.1)',
+            display:'flex', alignItems:'center', justifyContent:'center'}}>
+            <span style={{fontSize:12}}>🏢</span>
+          </div>
+          <span style={{fontSize:14, fontWeight:700, color:'rgba(255,255,255,0.9)'}}>Clientes</span>
+          <span style={{fontSize:10, color:'rgba(255,255,255,0.3)',
+            background:'rgba(255,255,255,0.05)', padding:'2px 8px', borderRadius:999}}>
+            {clients.length}
+          </span>
+        </div>
+        <button onClick={onClose} style={{
+          width:28, height:28, borderRadius:'50%', border:'none', cursor:'pointer',
+          background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.5)',
+          display:'flex', alignItems:'center', justifyContent:'center'}}>
+          <X size={13}/>
+        </button>
+      </div>
+
+      {/* Opción personal (sin cliente) */}
+      <button onClick={() => onSelect(null)}
+        style={{
+          margin:'12px 12px 0', padding:'10px 14px', borderRadius:12, border:'none', cursor:'pointer',
+          background: !activeClient ? 'rgba(255,255,255,0.08)' : 'transparent',
+          display:'flex', alignItems:'center', gap:10, textAlign:'left',
+          transition:`background 150ms ${SPRING}`,
+          outline: !activeClient ? '1px solid rgba(255,255,255,0.15)' : 'none',
+        }}
+        onMouseEnter={e=>{ if(activeClient) e.currentTarget.style.background='rgba(255,255,255,0.04)' }}
+        onMouseLeave={e=>{ if(activeClient) e.currentTarget.style.background='transparent' }}>
+        <div style={{width:36, height:36, borderRadius:10, flexShrink:0,
+          background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+          display:'flex', alignItems:'center', justifyContent:'center', fontSize:18}}>👤</div>
+        <div>
+          <p style={{fontSize:13, fontWeight:600, color:'rgba(255,255,255,0.85)', margin:0}}>
+            Espacio personal
+          </p>
+          <p style={{fontSize:11, color:'rgba(255,255,255,0.35)', margin:0}}>
+            Canvas y plantillas personales
+          </p>
+        </div>
+        {!activeClient && <div style={{marginLeft:'auto', width:8, height:8, borderRadius:'50%',
+          background:'#60a5fa', boxShadow:'0 0 8px #60a5fa'}}/>}
+      </button>
+
+      {/* Lista de clientes */}
+      <div className="nowheel" style={{flex:1, overflowY:'auto', padding:'8px 12px', display:'flex', flexDirection:'column', gap:6}}>
+        {clients.map(client => (
+          <div key={client.id} style={{position:'relative'}}>
+            <button onClick={() => onSelect(client)}
+              style={{
+                width:'100%', padding:'10px 14px', borderRadius:12, border:'none', cursor:'pointer',
+                background: activeClient?.id === client.id ? `${client.color}18` : 'rgba(255,255,255,0.03)',
+                display:'flex', alignItems:'center', gap:10, textAlign:'left',
+                outline: activeClient?.id === client.id ? `1px solid ${client.color}50` : '1px solid rgba(255,255,255,0.06)',
+                transition:`all 150ms ${SPRING}`,
+              }}
+              onMouseEnter={e=>{ if(activeClient?.id!==client.id) e.currentTarget.style.background='rgba(255,255,255,0.06)' }}
+              onMouseLeave={e=>{ if(activeClient?.id!==client.id) e.currentTarget.style.background='rgba(255,255,255,0.03)' }}>
+              {/* Avatar / iniciales */}
+              <div style={{
+                width:36, height:36, borderRadius:10, flexShrink:0,
+                background: `${client.color}25`, border:`1px solid ${client.color}40`,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:16, fontWeight:700, color:client.color,
+              }}>
+                {client.avatar || client.name.slice(0,1).toUpperCase()}
+              </div>
+              <div style={{flex:1, minWidth:0}}>
+                <p style={{fontSize:13, fontWeight:600,
+                  color: activeClient?.id===client.id ? client.color : 'rgba(255,255,255,0.85)', margin:0}}>
+                  {client.name}
+                </p>
+                {client.description && (
+                  <p style={{fontSize:11, color:'rgba(255,255,255,0.35)', margin:0,
+                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                    {client.description}
+                  </p>
+                )}
+              </div>
+              {activeClient?.id===client.id && (
+                <div style={{width:8, height:8, borderRadius:'50%', flexShrink:0,
+                  background:client.color, boxShadow:`0 0 8px ${client.color}`}}/>
+              )}
+            </button>
+            {/* Botones editar/borrar — solo admin */}
+            {isAdmin && (
+              <div style={{position:'absolute', top:8, right:8, display:'flex', gap:4}}>
+                <button onClick={e=>{ e.stopPropagation(); startEdit(client) }}
+                  style={{width:22, height:22, borderRadius:6, border:'none', cursor:'pointer',
+                    background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.4)',
+                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:10}}>
+                  <Pencil size={10}/>
+                </button>
+                <button onClick={e=>{ e.stopPropagation(); remove(client.id) }}
+                  style={{width:22, height:22, borderRadius:6, border:'none', cursor:'pointer',
+                    background:'rgba(239,68,68,0.1)', color:'rgba(239,68,68,0.6)',
+                    display:'flex', alignItems:'center', justifyContent:'center'}}>
+                  <Trash2 size={10}/>
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Formulario crear/editar (solo admin) */}
+      {isAdmin && (
+        <div style={{borderTop:'1px solid rgba(255,255,255,0.06)', padding:12, flexShrink:0}}>
+          {!creating ? (
+            <button onClick={()=>{ setCreating(true); setEditId(null); setForm({name:'',description:'',color:'#60a5fa'}) }}
+              style={{
+                width:'100%', padding:'10px', borderRadius:10, border:'1px dashed rgba(255,255,255,0.12)',
+                background:'transparent', cursor:'pointer', color:'rgba(255,255,255,0.45)',
+                fontSize:12, fontWeight:500, display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                transition:`all 150ms ${SPRING}`,
+              }}
+              onMouseEnter={e=>{ e.currentTarget.style.borderColor='rgba(255,255,255,0.25)'; e.currentTarget.style.color='rgba(255,255,255,0.7)' }}
+              onMouseLeave={e=>{ e.currentTarget.style.borderColor='rgba(255,255,255,0.12)'; e.currentTarget.style.color='rgba(255,255,255,0.45)' }}>
+              <Plus size={14}/> Nuevo cliente
+            </button>
+          ) : (
+            <div style={{display:'flex', flexDirection:'column', gap:8}}>
+              <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}
+                placeholder="Nombre del cliente *"
+                className="nowheel nopan nodrag"
+                style={{background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)',
+                  borderRadius:8, padding:'8px 12px', fontSize:12, color:'rgba(255,255,255,0.85)',
+                  outline:'none', width:'100%'}}
+                onFocus={e=>e.target.style.borderColor='rgba(96,165,250,0.5)'}
+                onBlur={e=>e.target.style.borderColor='rgba(255,255,255,0.12)'}/>
+              <input value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))}
+                placeholder="Descripción (opcional)"
+                className="nowheel nopan nodrag"
+                style={{background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)',
+                  borderRadius:8, padding:'8px 12px', fontSize:12, color:'rgba(255,255,255,0.85)',
+                  outline:'none', width:'100%'}}/>
+              {/* Color picker */}
+              <div style={{display:'flex', gap:6, flexWrap:'wrap'}}>
+                {CLIENT_COLORS.map(c=>(
+                  <button key={c} onClick={()=>setForm(f=>({...f,color:c}))}
+                    style={{
+                      width:24, height:24, borderRadius:6, border:'none', cursor:'pointer',
+                      background:c,
+                      outline: form.color===c ? `2px solid white` : 'none',
+                      outlineOffset:2,
+                    }}/>
+                ))}
+              </div>
+              <div style={{display:'flex', gap:6}}>
+                <button onClick={save} disabled={saving||!form.name.trim()}
+                  style={{
+                    flex:1, padding:'8px', borderRadius:8, border:'none', cursor:'pointer',
+                    background: form.name.trim() ? form.color : 'rgba(255,255,255,0.06)',
+                    color: form.name.trim() ? '#fff' : 'rgba(255,255,255,0.3)',
+                    fontSize:12, fontWeight:600, transition:`all 150ms ${SPRING}`,
+                  }}>
+                  {saving ? <Loader2 size={13} style={{animation:'spin 1s linear infinite'}}/> : (editId ? 'Guardar' : 'Crear')}
+                </button>
+                <button onClick={()=>{ setCreating(false); setEditId(null) }}
+                  style={{padding:'8px 14px', borderRadius:8, border:'none', cursor:'pointer',
+                    background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.5)', fontSize:12}}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── ImageHistory — panel lateral de imágenes generadas ────────────────────────
-function ImageHistory({ onClose }) {
+function ImageHistory({ onClose, clientId = '' }) {
   const token = localStorage.getItem('fai_token')
   const authH = token ? { Authorization: `Bearer ${token}` } : {}
   const [images, setImages] = useState([])
@@ -2932,7 +3168,8 @@ function ImageHistory({ onClose }) {
   const [lightbox, setLightbox] = useState(null)
 
   useEffect(() => {
-    fetch(`${SERVER}/api/images?limit=200`, { headers: authH })
+    setLoading(true)
+    fetch(`${SERVER}/api/images?limit=200&client_id=${clientId}`, { headers: authH })
       .then(r => r.ok ? r.json() : [])
       .then(d => { setImages(d); setLoading(false) })
       .catch(() => setLoading(false))
@@ -2958,7 +3195,9 @@ function ImageHistory({ onClose }) {
       }}>
         <div style={{display:'flex', alignItems:'center', gap:8}}>
           <ImageIcon size={15} color={C.image}/>
-          <span style={{fontSize:14, fontWeight:700, color:'rgba(255,255,255,0.9)'}}>Mis imágenes</span>
+          <span style={{fontSize:14, fontWeight:700, color:'rgba(255,255,255,0.9)'}}>
+            {clientId ? 'Imágenes del cliente' : 'Mis imágenes'}
+          </span>
           {images.length > 0 && (
             <span style={{
               fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:999,
@@ -3076,19 +3315,31 @@ export default function App() {
   const [authRole, setAuthRole] = useState(() => localStorage.getItem('fai_role') || 'user')
   const isAdmin = authRole === 'admin'
   const rfRef = useRef(null)  // ReactFlow instance → getViewport()
-  const [showTemplates, setShowTemplates] = useState(false)
-  const [showStyles, setShowStyles]       = useState(false)
+  const [showTemplates, setShowTemplates]   = useState(false)
+  const [showStyles, setShowStyles]         = useState(false)
   const [showImageHistory, setShowImgHistory] = useState(false)
+  const [showClients, setShowClients]       = useState(false)
+  const [activeClient, setActiveClientState] = useState(() => getActiveClient())
   const [globalStyleId, setGlobalStyleId] = useState(null)
   const [clearConfirm, setClearConfirm]   = useState(false)
   const [lightboxItem, setLightboxItem]   = useState(null)
+
+  // ── Cambiar de cliente — guarda canvas actual y carga el nuevo ───────────
+  const switchClient = useCallback((client) => {
+    setActiveClientState(client)
+    setActiveClient(client)
+    setShowClients(false)
+    // Limpiar canvas y cargar el del nuevo cliente
+    setNodes([])
+    setEdges([])
+  }, [setNodes, setEdges])
 
   // ── Auto-save canvas cada 30s + restore al login ─────────────────────────
   useEffect(() => {
     const token = localStorage.getItem('fai_token')
     if (!token) return
-    // Cargar canvas guardado
-    fetch(`${SERVER}/api/canvas`, { headers:{ Authorization:`Bearer ${token}` } })
+    const clientId = activeClient?.id || ''
+    fetch(`${SERVER}/api/canvas?client_id=${clientId}`, { headers:{ Authorization:`Bearer ${token}` } })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d?.nodes?.length) {
@@ -3097,7 +3348,7 @@ export default function App() {
         }
       })
       .catch(() => {})
-  }, [authUser])
+  }, [authUser, activeClient?.id])
 
   useEffect(() => {
     const token = localStorage.getItem('fai_token')
@@ -3105,11 +3356,11 @@ export default function App() {
     const timer = setTimeout(() => {
       fetch(`${SERVER}/api/canvas`, {
         method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
-        body: JSON.stringify({ nodes, edges }),
+        body: JSON.stringify({ nodes, edges, client_id: activeClient?.id || '' }),
       }).catch(() => {})
     }, 2000)
     return () => clearTimeout(timer)
-  }, [nodes, edges])
+  }, [nodes, edges, activeClient?.id])
 
   // ── Lightbox listener global ──────────────────────────────────────────────
   useEffect(() => Bus.on('openLightbox', setLightboxItem), [])
@@ -3309,6 +3560,37 @@ export default function App() {
           Estilos
         </button>
 
+        {/* Clientes */}
+        <span style={{width:1,height:14,background:'rgba(255,255,255,0.1)',margin:'0 2px'}}/>
+        <button
+          className="glass-btn glass-btn-neutral"
+          style={{padding:'5px 10px',fontSize:12,fontWeight:500,
+            letterSpacing:'-0.01em',display:'flex',alignItems:'center',gap:6,
+            color: showClients ? (activeClient?.color||'#60a5fa') : 'rgba(255,255,255,0.55)',
+            background: showClients ? `${activeClient?.color||'#60a5fa'}15` : (activeClient ? `${activeClient.color}08` : undefined),
+            outline: activeClient && !showClients ? `1px solid ${activeClient.color}30` : 'none',
+          }}
+          onClick={()=>setShowClients(v=>!v)}>
+          {activeClient ? (
+            <>
+              <div style={{width:16,height:16,borderRadius:4,background:`${activeClient.color}30`,
+                border:`1px solid ${activeClient.color}50`,display:'flex',alignItems:'center',
+                justifyContent:'center',fontSize:10,color:activeClient.color,fontWeight:700}}>
+                {activeClient.name.slice(0,1).toUpperCase()}
+              </div>
+              <span style={{color:activeClient.color,maxWidth:80,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                {activeClient.name}
+              </span>
+            </>
+          ) : (
+            <>
+              <span style={{fontSize:12}}>🏢</span>
+              <span>Clientes</span>
+            </>
+          )}
+          <ChevronDown size={10} style={{opacity:0.5}}/>
+        </button>
+
         {/* Galería */}
         <span style={{width:1,height:14,background:'rgba(255,255,255,0.1)',margin:'0 2px'}}/>
         <button
@@ -3411,10 +3693,24 @@ export default function App() {
         </>
       )}
 
+      {/* Panel Clientes */}
+      {showClients && (
+        <>
+          <ClientsPanel
+            activeClient={activeClient}
+            onSelect={switchClient}
+            onClose={()=>setShowClients(false)}
+            isAdmin={isAdmin}
+          />
+          <div onClick={()=>setShowClients(false)}
+            style={{position:'fixed',inset:0,zIndex:190,background:'rgba(0,0,0,0.3)',backdropFilter:'blur(2px)'}}/>
+        </>
+      )}
+
       {/* Panel Galería de imágenes */}
       {showImageHistory && (
         <>
-          <ImageHistory onClose={()=>setShowImgHistory(false)}/>
+          <ImageHistory onClose={()=>setShowImgHistory(false)} clientId={activeClient?.id||''}/>
           <div onClick={()=>setShowImgHistory(false)}
             style={{position:'fixed',inset:0,zIndex:190,background:'rgba(0,0,0,0.3)',backdropFilter:'blur(2px)'}}/>
         </>
