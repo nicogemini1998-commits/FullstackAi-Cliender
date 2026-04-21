@@ -182,9 +182,9 @@ def _scrape_website(url: str) -> dict:
         url = f"https://{url}"
     html = ""
     try:
-        # Intentar con Scrapling primero (stealth + JS rendering cuando sea necesario)
         from scrapling.fetchers import Fetcher
-        page = Fetcher.get(url, timeout=12, stealthy_headers=True)
+        fetcher = Fetcher(auto_match=False)
+        page = fetcher.get(url, timeout=12, stealthy_headers=True)
         html = str(page.html) if page else ""
     except Exception:
         pass
@@ -302,6 +302,60 @@ async def _claude_enrich(leads: list[dict]) -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 5. APOLLO — Altos cargos secundarios de la misma empresa
+# ─────────────────────────────────────────────────────────────────────────────
+_SECONDARY_TITLES = [
+    "Director Comercial", "Director General", "Director Financiero",
+    "Director de Marketing", "Director de Operaciones", "Socio", "Socia",
+    "CFO", "COO", "CMO", "VP", "Gerente General", "Responsable Comercial",
+]
+
+async def _apollo_org_secondaries(org_domain: str, exclude_person_id: str) -> list[dict]:
+    """Busca altos cargos adicionales en la misma empresa via Apollo."""
+    key = APOLLO_KEY()
+    if not key or not org_domain:
+        return []
+    hdr = {"x-api-key": key, "Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(f"{APOLLO_BASE}/mixed_people/api_search", headers=hdr, json={
+                "person_titles": _SECONDARY_TITLES,
+                "q_organization_domains": [org_domain],
+                "per_page": 5, "page": 1,
+            })
+            r.raise_for_status()
+            people = [p for p in r.json().get("people", [])
+                      if p.get("id") != exclude_person_id][:3]
+
+        if not people:
+            return []
+
+        async with httpx.AsyncClient(timeout=20) as c:
+            er = await c.post(f"{APOLLO_BASE}/people/bulk_match", headers=hdr, json={
+                "details": [{"id": p["id"]} for p in people],
+                "reveal_personal_emails": True,
+            })
+            matches = er.json().get("matches") or [] if er.status_code == 200 else []
+
+        result = []
+        for m in matches:
+            if not m:
+                continue
+            result.append({
+                "name":         f"{m.get('first_name','')} {m.get('last_name','')}".strip(),
+                "role":         m.get("title",""),
+                "email":        m.get("email","") or None,
+                "phone":        (m.get("organization") or {}).get("phone") or None,
+                "linkedin_url": m.get("linkedin_url") or None,
+                "apollo_id":    m.get("id",""),
+            })
+        return result
+    except Exception as e:
+        print(f"[ApolloOrg] {e}")
+        return []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PIPELINE PRINCIPAL
 # ─────────────────────────────────────────────────────────────────────────────
 async def fetch_leads_for_user(sector_tag: str, city: str, qty: int = 15) -> list[dict]:
@@ -357,7 +411,6 @@ async def fetch_leads_for_user(sector_tag: str, city: str, qty: int = 15) -> lis
     print(f"   Scrapling OK: {scraped_ok}/{len(base)}")
 
     # 4. Apify GMB — solo para leads con score SEO bajo (optimizar créditos)
-    # o cuando no hay datos de redes sociales de Scrapling
     if APIFY_KEY():
         needs_gmb = [l for l in base if not l.get("gmb_rating") and l.get("empresa")][:5]
         if needs_gmb:
@@ -367,15 +420,26 @@ async def fetch_leads_for_user(sector_tag: str, city: str, qty: int = 15) -> lis
             for lead, gmb in zip(needs_gmb, gmb_results):
                 if isinstance(gmb, dict) and gmb:
                     lead.update(gmb)
-                    # Si Apify encontró redes sociales, usarlas
                     if not lead.get("social_facebook") and gmb.get("gmb_website"):
                         lead["web"] = lead["web"] or gmb["gmb_website"]
 
     # 5. Claude — diagnóstico completo (fail gracefully si sin créditos)
     print(f"   Claude analizando {len(base)} empresas...")
-    final = await _claude_enrich(base)
+    enriched = await _claude_enrich(base)
 
-    return final
+    # 6. Altos cargos secundarios — buscar más decisores por empresa en Apollo
+    print(f"   Buscando altos cargos secundarios...")
+    secondary_tasks = []
+    for lead in enriched:
+        org_domain = lead.get("web","").replace("https://","").replace("http://","").split("/")[0]
+        secondary_tasks.append(
+            _apollo_org_secondaries(org_domain, lead.get("apollo_id",""))
+        )
+    secondary_results = await asyncio.gather(*secondary_tasks, return_exceptions=True)
+    for lead, secondaries in zip(enriched, secondary_results):
+        lead["secondary_contacts"] = secondaries if isinstance(secondaries, list) else []
+
+    return enriched
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -393,7 +457,13 @@ async def save_lead_to_db(lead: dict) -> Optional[str]:
             empresa, lead.get("ciudad","")
         )
         if existing:
-            return str(existing["id"])
+            cid = existing["id"]
+            # Empresa ya existe — guardar este contacto como secundario si es nuevo
+            await _upsert_contact(conn, cid, lead, is_primary=False)
+            # También guardar secundarios de Apollo
+            for sec in (lead.get("secondary_contacts") or []):
+                await _upsert_contact(conn, cid, sec, is_primary=False)
+            return str(cid)
 
         row = await conn.fetchrow(
             """INSERT INTO lu_companies
@@ -429,13 +499,36 @@ async def save_lead_to_db(lead: dict) -> Optional[str]:
             return None
         cid = row["id"]
 
-        if lead.get("nombre"):
-            await conn.execute(
-                """INSERT INTO lu_contacts
-                    (company_id,name,role,email,phone,phone_source,linkedin_url,is_primary)
-                   VALUES($1,$2,$3,$4,$5,'apollo',$6,true)""",
-                cid, lead["nombre"], lead.get("cargo") or None,
-                lead.get("email") or None, lead["tel"],
-                lead.get("linkedin") or None,
-            )
+        # Contacto principal (la persona de Apollo con teléfono)
+        await _upsert_contact(conn, cid, lead, is_primary=True)
+
+        # Altos cargos secundarios encontrados via Apollo org search
+        for sec in (lead.get("secondary_contacts") or []):
+            await _upsert_contact(conn, cid, sec, is_primary=False)
+
         return str(cid)
+
+
+async def _upsert_contact(conn, company_id, contact: dict, is_primary: bool):
+    """Inserta contacto si no existe ya (dedup por nombre)."""
+    name = (contact.get("nombre") or contact.get("name") or "").strip()
+    if not name:
+        return
+    existing = await conn.fetchrow(
+        "SELECT id FROM lu_contacts WHERE company_id=$1 AND name=$2",
+        company_id, name
+    )
+    if existing:
+        return
+    await conn.execute(
+        """INSERT INTO lu_contacts
+            (company_id,name,role,email,phone,phone_source,linkedin_url,is_primary)
+           VALUES($1,$2,$3,$4,$5,'apollo',$6,$7)""",
+        company_id,
+        name,
+        contact.get("cargo") or contact.get("role") or None,
+        contact.get("email") or None,
+        contact.get("tel") or contact.get("phone") or None,
+        contact.get("linkedin") or contact.get("linkedin_url") or None,
+        is_primary,
+    )

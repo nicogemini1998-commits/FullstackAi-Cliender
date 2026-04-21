@@ -2482,9 +2482,16 @@ const TextNode = ({ id, data }) => {
             display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
             <Bot size={12} color={C_AGENT}/>
           </div>
-          <span style={{fontSize:12,fontWeight:700,color:'rgba(255,255,255,0.85)',letterSpacing:'-0.01em'}}>
-            Agente IA
-          </span>
+          <div style={{display:'flex',flexDirection:'column',gap:1}}>
+            <span style={{fontSize:12,fontWeight:700,color:'rgba(255,255,255,0.85)',letterSpacing:'-0.01em'}}>
+              Agente IA
+            </span>
+            {selectedAgent && (
+              <span style={{fontSize:9,color:C_AGENT,opacity:0.7,letterSpacing:'0.04em',fontFamily:'monospace'}}>
+                {selectedAgent.model} · max {selectedAgent.max_tokens}tk
+              </span>
+            )}
+          </div>
         </div>
         <button onClick={()=>data?.onDelete?.()}
           style={{width:20,height:20,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',
