@@ -62,27 +62,33 @@ _NO_COMPETITORS = [
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. APOLLO — Búsqueda + enriquecimiento
 # ─────────────────────────────────────────────────────────────────────────────
-async def _apollo_search(city: str, qty: int) -> list[dict]:
+async def _apollo_search(city: str, qty: int, page: int = 1) -> list[dict]:
     key = APOLLO_KEY()
     if not key:
         return []
     hdr = {"x-api-key": key, "Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=30) as c:
-            r = await c.post(f"{APOLLO_BASE}/mixed_people/api_search", headers=hdr, json={
-                "person_titles": ["CEO","Fundador","Director General","Director Comercial",
-                                  "Gerente","Propietario","Owner"],
-                "person_locations": [f"{city}, Spain"],
-                "organization_num_employees_ranges": ["5,150"],
-                "per_page": 100, "page": 1,
-            })
-            r.raise_for_status()
-            people = r.json().get("people", [])
+        candidates = []
+        # Paginar hasta encontrar suficientes leads con teléfono
+        for p in range(page, page + 3):
+            async with httpx.AsyncClient(timeout=30) as c:
+                r = await c.post(f"{APOLLO_BASE}/mixed_people/api_search", headers=hdr, json={
+                    "person_titles": ["CEO","Fundador","Director General","Director Comercial",
+                                      "Gerente","Propietario","Owner","Socio","Director"],
+                    "person_locations": [f"{city}, Spain"],
+                    "organization_num_employees_ranges": ["5,200"],
+                    "per_page": 100, "page": p,
+                })
+                r.raise_for_status()
+                people = r.json().get("people", [])
 
-        # Solo con teléfono confirmado — sin excepción
-        with_phone = [p for p in people if p.get("has_direct_phone") == "Yes"]
-        with_both  = [p for p in with_phone if p.get("has_email")]
-        candidates = (with_both + [p for p in with_phone if p not in with_both])[:qty]
+            with_phone = [x for x in people if x.get("has_direct_phone") == "Yes"]
+            with_both  = [x for x in with_phone if x.get("has_email")]
+            candidates += with_both + [x for x in with_phone if x not in with_both]
+            if len(candidates) >= qty:
+                break
+
+        candidates = candidates[:qty]
         if not candidates:
             return []
 
@@ -376,13 +382,13 @@ async def _apollo_org_secondaries(org_domain: str, exclude_person_id: str) -> li
 # ─────────────────────────────────────────────────────────────────────────────
 # PIPELINE PRINCIPAL
 # ─────────────────────────────────────────────────────────────────────────────
-async def fetch_leads_for_user(sector_tag: str, city: str, qty: int = 15) -> list[dict]:
+async def fetch_leads_for_user(sector_tag: str, city: str, qty: int = 15, page: int = 1) -> list[dict]:
     """
     Pipeline completo: Apollo → phone filter → Apify GMB || Scrapling → Claude
     Retorna SOLO leads con teléfono verificado.
     """
     # 1. Apollo
-    matches = await _apollo_search(city, qty)
+    matches = await _apollo_search(city, qty, page=page)
     if not matches:
         return []
 

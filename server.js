@@ -903,20 +903,31 @@ app.get('/api/task/:taskId', async (req, res) => {
       headers: { Authorization: `Bearer ${KIE_KEY}` },
     })
     const json = await r.json()
-    console.log(`KIE poll (${taskId}) →`, JSON.stringify(json).slice(0, 300))
-    // Normalizar respuesta KIE al formato esperado por frontend
-    if (json.code === 200) {
-      return res.json(json)
-    }
-    // KIE devuelve state: waiting|generating|success|fail
+    console.log(`KIE poll (${taskId}) →`, JSON.stringify(json).slice(0, 400))
     const d = json.data || {}
-    if (d.state === 'success') {
-      return res.json({ code: 200, data: { state: 'success', resultJson: JSON.stringify(d) } })
+    const state = d.state || (d.successFlag===1?'success':d.successFlag>=2?'fail':'generating')
+
+    if (state === 'success') {
+      // Extraer URL del video de resultJson (varios formatos posibles)
+      let resultUrls = []
+      try {
+        const rj = typeof d.resultJson==='string' ? JSON.parse(d.resultJson||'{}') : (d.resultJson||{})
+        if (rj.resultUrls) resultUrls = Array.isArray(rj.resultUrls) ? rj.resultUrls : [rj.resultUrls]
+        else if (rj.resultUrl) resultUrls = [rj.resultUrl]
+        else if (rj.url) resultUrls = [rj.url]
+        else if (rj.videoUrl) resultUrls = [rj.videoUrl]
+        // Seedance puede tener el url directo en data
+        if (!resultUrls.length && d.resultUrl) resultUrls = [d.resultUrl]
+        if (!resultUrls.length && d.videoUrl) resultUrls = [d.videoUrl]
+      } catch { if (d.resultUrl) resultUrls = [d.resultUrl] }
+
+      return res.json({ code:200, data:{ state:'success',
+        resultJson: JSON.stringify({ resultUrls }) } })
     }
-    if (d.state === 'fail') {
-      return res.json({ code: 200, data: { state: 'fail', failMsg: d.failMsg || 'Generación fallida' } })
+    if (state === 'fail') {
+      return res.json({ code:200, data:{ state:'fail', failMsg: d.failMsg || d.message || 'Generación fallida' } })
     }
-    return res.json({ code: 200, data: { state: 'generating', progress: d.progress || 0 } })
+    return res.json({ code:200, data:{ state:'generating', progress: d.progress || 0 } })
   } catch (err) {
     res.status(500).json({ code: 500, msg: err.message })
   }

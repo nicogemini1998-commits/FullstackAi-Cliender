@@ -105,7 +105,6 @@ const VIDEO_MODELS = [
   { id:'veo3_fast',              label:'Veo3 Fast',   ar:['16:9','9:16','4:5'],                    dur:['5','10','15','20'], sImg:true,  maxImg:3 },
   { id:'veo3',                   label:'Veo3 Quality',ar:['16:9','9:16','4:5'],                    dur:['5','10','15','20'], sImg:true,  maxImg:3 },
   { id:'bytedance/seedance-2',   label:'Seedance 2',  ar:['16:9','9:16','1:1','4:3','4:5'],        dur:['5','8','10','15'],  sImg:true,  maxImg:10, sAud:true, maxAud:10 },
-  { id:'seedance-2-krea',        label:'Seedance 2 - KREA', ar:['16:9','9:16','1:1','4:3','4:5'],  dur:['5','8','10','15'],  sImg:true,  maxImg:10, sAud:true, maxAud:10 },
   { id:'kling-2.6/text-to-video',label:'Kling 2.6',  ar:['1:1','16:9','9:16','4:5'],              dur:['5','10'],           sImg:true,  maxImg:1 },
   { id:'wan/2-7-text-to-video',  label:'WAN 2.7',     ar:['16:9','9:16','1:1','4:3','3:4','4:5'], dur:['5','10','15'] },
   { id:'sora-2-text-to-video',   label:'Sora-2',      ar:['16:9','9:16','4:5'],                    dur:['10'] },
@@ -1520,87 +1519,57 @@ const VideoNode = ({ id, data }) => {
   const [openScenarios, setOpenScenarios] = useState(false)
   const poll = usePoll(5000)
   const m = VIDEO_MODELS[mIdx]
-  // Refs para acceder a valores actuales dentro del useEffect sin stale closure
-  const promptRef   = useRef(prompt)
-  const arRef       = useRef(ar)
-  const durRef      = useRef(dur)
-  const busyRef     = useRef(busy)
-  useEffect(()=>{ promptRef.current = prompt },[prompt])
-  useEffect(()=>{ arRef.current = ar },[ar])
-  useEffect(()=>{ durRef.current = dur },[dur])
-  useEffect(()=>{ busyRef.current = busy },[busy])
-
   useEffect(()=>{ setAr(m.ar[0]); setDur(m.dur[0]||'5'); setKf([]); setRv([]); setRa([]); setVideoUrl(null); setErr(null) },[mIdx])
-
-  // Núcleo de generación — no recibe args de evento
-  const generate = useCallback(async (forcedPrompt, forcedAr, forcedDur, forcedModel) => {
-    const usePrompt = (typeof forcedPrompt === 'string' ? forcedPrompt : null) || promptRef.current
-    if (!usePrompt?.trim() || busyRef.current) return
-    const useAr  = forcedAr  || arRef.current
-    const useDur = forcedDur || durRef.current
-    const useM   = forcedModel
-      ? VIDEO_MODELS.find(v=>v.id===forcedModel) || VIDEO_MODELS[mIdx]
-      : VIDEO_MODELS[mIdx]
-
-    setBusy(true); setErr(null); setVideoUrl(null); setProg(0)
-
-    const thisNode = getNode(id)
-    const pos = thisNode?.position || { x:0, y:0 }
-    const pw  = thisNode?.measured?.width  || 380
-
-    try {
-      const r = await fetch(`${SERVER}/api/generate`,{
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({
-          model: useM.id, prompt: usePrompt, aspectRatio: useAr,
-          resolution: res, duration: useDur,
-          refImages: kf.map(f=>f.url),
-          refVideos: rv.map(f=>f.url),
-          refAudios: ra.map(f=>f.url),
-          extra:{ generateAudio:genAudio, returnLastFrame:retLast, webSearch, nsfwCheck:nsfw }
-        }),
-      })
-      const json = await r.json()
-      const taskId = json.data?.taskId || json.taskId
-      if (!taskId) throw new Error(json.msg || json.error || 'Sin taskId en respuesta')
-
-      poll(
-        taskId,
-        url => {
-          setVideoUrl(url); setBusy(false); setProg(100)
-          const rvid = `resvid-${Date.now()}`
-          addNodes({
-            id: rvid, type:'resultVideo',
-            position:{ x: pos.x + pw + 60, y: pos.y },
-            style:{ width:320, height:240 },
-            data:{ url, prompt: usePrompt, modelLabel: useM.label },
-          })
-          addEdges({ id:`e-${id}-${rvid}`, source:id, target:rvid, type:'gradient' })
-        },
-        msg => { setErr(msg); setBusy(false) },
-        p => setProg(p)
-      )
-    } catch(e){ setErr(e.message); setBusy(false) }
-  }, [id, mIdx, res, kf, rv, ra, genAudio, retLast, webSearch, nsfw, getNode, addNodes, addEdges, poll])
 
   // Auto-trigger desde agente o terminal
   useEffect(()=>{
     if (!data.incomingPrompt && !data.autoTrigger) return
     const p = data.autoPrompt || data.incomingPrompt || ''
-    if (p) { setPrompt(p); promptRef.current = p }
-    if (data.autoModel) {
-      const idx = VIDEO_MODELS.findIndex(v=>v.id===data.autoModel)
-      if (idx>=0) setMIdx(idx)
-    }
-    if (data.autoAr) { setAr(data.autoAr); arRef.current = data.autoAr }
-    if (data.autoDuration) { setDur(String(data.autoDuration)); durRef.current = String(data.autoDuration) }
+    if (p) setPrompt(p)
+    if (data.autoModel) { const idx=VIDEO_MODELS.findIndex(v=>v.id===data.autoModel); if(idx>=0) setMIdx(idx) }
+    if (data.autoAr) setAr(data.autoAr)
+    if (data.autoDuration) setDur(String(data.autoDuration))
     setNodes(nds=>nds.map(n=>n.id===id?{...n,data:{...n.data,
-      incomingPrompt:null, autoTrigger:false, autoPrompt:null, autoModel:null, autoAr:null, autoDuration:null
+      incomingPrompt:null,autoTrigger:false,autoPrompt:null,autoModel:null,autoAr:null,autoDuration:null
     }}:n))
-    if (data.autoTrigger && p) {
-      setTimeout(()=>generate(p, data.autoAr, data.autoDuration ? String(data.autoDuration) : null, data.autoModel), 400)
-    }
   },[data.incomingPrompt, data.autoTrigger])
+
+  // Función de generación — captura el state actual en el momento del click
+  const generate = async () => {
+    if (!prompt.trim() || busy) return
+    setBusy(true); setErr(null); setVideoUrl(null); setProg(0)
+    const thisNode = getNode(id)
+    const pos = thisNode?.position || { x:0, y:0 }
+    const pw  = thisNode?.measured?.width || 380
+    try {
+      const body = {
+        model:m.id, prompt, aspectRatio:ar, resolution:res, duration:dur,
+        refImages:kf.map(f=>f.url), refVideos:rv.map(f=>f.url), refAudios:ra.map(f=>f.url),
+        extra:{ generateAudio:genAudio, returnLastFrame:retLast, webSearch, nsfwCheck:nsfw }
+      }
+      const r = await fetch(`${SERVER}/api/generate`,{
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body),
+      })
+      const json = await r.json()
+      const taskId = json.data?.taskId || json.taskId
+      if (!taskId) throw new Error(json.msg || json.error || `Error ${r.status}`)
+      poll(
+        taskId,
+        url => {
+          setVideoUrl(url); setBusy(false); setProg(100)
+          const rvid = `resvid-${Date.now()}`
+          addNodes({ id:rvid, type:'resultVideo',
+            position:{ x:pos.x+pw+60, y:pos.y },
+            style:{ width:320, height:240 },
+            data:{ url, prompt, modelLabel:m.label }
+          })
+          addEdges({ id:`e-${id}-${rvid}`, source:id, target:rvid, type:'gradient' })
+        },
+        msg=>{ setErr(msg); setBusy(false) },
+        p=>setProg(p)
+      )
+    } catch(e){ setErr(e.message); setBusy(false) }
+  }
 
   const vidHandles = <>
     <Handle type="target" position={Position.Left}  style={mkHandle('left',  C.video,'video')}/>

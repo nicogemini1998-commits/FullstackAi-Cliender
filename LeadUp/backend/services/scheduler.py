@@ -68,11 +68,10 @@ async def _already_assigned_today(company_id: str) -> bool:
     return row is not None
 
 
-async def _fetch_real_leads(slots: int) -> list[str]:
+async def _fetch_real_leads(slots: int, page_offset: int = 1) -> list[str]:
     """
-    Pipeline completo: Apollo → Scrapling → Claude → BD.
-    Rota por sectores y ciudades de CLIENDER.
-    Devuelve lista de company_ids guardados.
+    Pipeline completo: Apollo (paginado) → Scrapling → Claude → BD.
+    page_offset permite que cada usuario obtenga resultados de páginas distintas.
     """
     saved_ids: list[str] = []
     sectors = CLIENDER_SECTORS[:]
@@ -90,7 +89,9 @@ async def _fetch_real_leads(slots: int) -> list[str]:
                 break
             needed = slots - len(saved_ids)
             try:
-                leads = await fetch_leads_for_user(tag, city, qty=needed + 5)
+                leads = await fetch_leads_for_user(
+                    tag, city, qty=needed + 5, page=page_offset
+                )
                 for lead in leads:
                     if len(saved_ids) >= slots:
                         break
@@ -111,7 +112,7 @@ async def _daily_assignment():
 
     print(f"⏰ Scheduler diario: {len(users)} comerciales")
 
-    for user in users:
+    for idx, user in enumerate(users):
         uid  = str(user["id"])
         name = user["name"]
 
@@ -136,9 +137,10 @@ async def _daily_assignment():
                     cid
                 )
 
-        # 2. Leads reales via Apollo → Scrapling → Claude
-        slots = min(LEADS_PER_USER - len(retries), can_add - len(retries))
-        company_ids = await _fetch_real_leads(slots)
+        # 2. Leads reales — cada usuario usa una página distinta de Apollo
+        slots      = min(LEADS_PER_USER - len(retries), can_add - len(retries))
+        page_off   = 1 + (idx * 2)   # usuario 0→p1, 1→p3, 2→p5, 3→p7, 4→p9
+        company_ids = await _fetch_real_leads(slots, page_offset=page_off)
 
         for cid in company_ids:
             await _assign_to_user(uid, cid)
