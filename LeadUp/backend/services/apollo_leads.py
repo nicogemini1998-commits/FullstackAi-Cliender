@@ -35,10 +35,28 @@ CLIENDER_SECTORS = [
 ]
 
 _NO_COMPETITORS = [
+    # Marketing / Agencias
     "agencia marketing","marketing digital","publicidad online","seo agency",
-    "sem agency","diseño web","desarrollo web","consultora digital",
-    "growth hacking","performance marketing","paid media","branding agency",
-    "inbound marketing",
+    "sem agency","paid media","branding agency","inbound marketing",
+    "growth hacking","performance marketing","performance agency",
+    "agencia publicidad","agencia comunicacion","agencia digital",
+    "marketing agency","digital agency","creative agency",
+    # Web / Dev
+    "diseño web","desarrollo web","web design","web development",
+    "app development","software factory","software house","software a medida",
+    "desarrollo software","programacion web","frontend studio",
+    # Consulting digital
+    "consultora digital","consultoria digital","digital consulting",
+    "transformacion digital","estrategia digital","digitalizacion",
+    # SEO/SEM específico
+    "seo masters","posicionamiento web","linkbuilding","content marketing",
+    "email marketing agency","social media agency","community management",
+    # IA / Tech agencies
+    "ai agency","ia consulting","machine learning consulting",
+    "data analytics agency","big data consulting",
+    # Nuestros servicios directos (evitar canibalizacion)
+    "crm agency","crm consulting","salesforce partner","hubspot partner",
+    "video production agency","produccion audiovisual agency",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────

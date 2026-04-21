@@ -1277,14 +1277,41 @@ const ImageNode = ({ id, data }) => {
               </div>
             )}
 
-            {/* Imagen de entrada manual */}
-            {model.imgInput && !selectedStyleId && (
-              <div style={{padding:'8px 14px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
-                <span style={{fontSize:10,color:'rgba(255,255,255,0.35)',display:'block',marginBottom:6}}>Imágenes de entrada</span>
-                <DropZone files={imgIn} onAdd={f=>setImgIn(v=>[...v,f])} onRemove={i=>setImgIn(v=>v.filter((_,j)=>j!==i))}
-                  accept="image/jpeg,image/png,image/webp" hint="JPEG, PNG, WebP · máx 30MB" max={model.maxImg||8}/>
+            {/* Imágenes de referencia — siempre disponible */}
+            <div style={{padding:'8px 14px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+                <span style={{fontSize:10,fontWeight:600,color:'rgba(255,255,255,0.45)',letterSpacing:'0.04em'}}>
+                  IMAGEN DE REFERENCIA {imgIn.length>0 && <span style={{color:C.image,marginLeft:4}}>{imgIn.length}</span>}
+                </span>
+                {imgIn.length>0 && (
+                  <button onClick={()=>setImgIn([])}
+                    style={{fontSize:9,color:'rgba(255,255,255,0.3)',background:'none',border:'none',cursor:'pointer',padding:'2px 4px'}}>
+                    limpiar
+                  </button>
+                )}
               </div>
-            )}
+
+              {/* Previews de imgs ya subidas */}
+              {imgIn.length>0 && (
+                <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:6}}>
+                  {imgIn.map((f,i)=>(
+                    <div key={i} style={{position:'relative',width:44,height:44,borderRadius:7,overflow:'hidden',
+                      border:`1px solid ${C.image}40`,flexShrink:0}}>
+                      <img src={f.url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                      <button onClick={()=>setImgIn(v=>v.filter((_,j)=>j!==i))}
+                        style={{position:'absolute',top:2,right:2,width:14,height:14,borderRadius:'50%',
+                          background:'rgba(0,0,0,0.75)',border:'none',cursor:'pointer',
+                          display:'flex',alignItems:'center',justifyContent:'center',padding:0}}>
+                        <X style={{width:8,height:8,color:'#fff'}}/>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <DropZone files={[]} onAdd={f=>setImgIn(v=>[...v,f])} onRemove={()=>{}}
+                accept="image/jpeg,image/png,image/webp" hint="JPEG · PNG · WebP · máx 30MB" max={model.maxImg||10}/>
+            </div>
 
             {/* Crudo */}
             <NRow dot="rgba(255,255,255,0.25)" label="Crudo">

@@ -198,32 +198,54 @@ async def _daily_assignment():
                 if len(batch) >= slots:
                     break
 
-                # Inserta company
                 cid = str(lead["id"])
                 try:
                     await conn.execute(
                         """
-                        INSERT INTO lu_companies (id, name, website, sector, city, digital_score, opportunity_level, summary)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                        ON CONFLICT (id) DO NOTHING
+                        INSERT INTO lu_companies (
+                            id, name, website, sector, city, employee_count,
+                            digital_score, opportunity_level, summary,
+                            has_crm, seo_score, has_facebook_pixel, has_google_ads,
+                            social_linkedin, gmb_rating, gmb_reviews,
+                            opportunity_sales, opportunity_tech, opportunity_av,
+                            opening_line, hook_captacion, hook_crm, hook_visibilidad,
+                            sector_tag, source
+                        ) VALUES (
+                            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+                            $14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
+                        ) ON CONFLICT (id) DO NOTHING
                         """,
-                        cid, lead["name"], lead["website"], lead["sector"], lead["city"],
-                        lead["digital_score"], lead["opportunity_level"], lead["summary"]
+                        cid, lead["name"], lead.get("website"), lead.get("sector"), lead.get("city"),
+                        lead.get("employee_count"),
+                        lead.get("digital_score"), lead.get("opportunity_level"), lead.get("summary"),
+                        lead.get("has_crm"), lead.get("seo_score", 0),
+                        bool(lead.get("has_facebook_pixel")), bool(lead.get("has_google_ads")),
+                        lead.get("social_linkedin"),
+                        lead.get("gmb_rating"), lead.get("gmb_reviews"),
+                        lead.get("opportunity_sales"), lead.get("opportunity_tech"), lead.get("opportunity_av"),
+                        lead.get("opening_line"), lead.get("hook_captacion"),
+                        lead.get("hook_crm"), lead.get("hook_visibilidad"),
+                        lead.get("sector", "").lower(), "dummy",
                     )
 
-                    # Inserta contact
-                    if lead.get("contacts"):
-                        contact = lead["contacts"][0]
-                        await conn.execute(
-                            """
-                            INSERT INTO lu_contacts (id, company_id, name, role, email, phone, is_primary)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7)
-                            """,
-                            str(uuid.uuid4()), cid, contact["name"], contact["role"],
-                            contact["email"], contact["phone"], True
+                    # Todos los contactos (primary + secondary)
+                    for contact in (lead.get("contacts") or []):
+                        existing_c = await conn.fetchrow(
+                            "SELECT id FROM lu_contacts WHERE company_id=$1 AND name=$2",
+                            cid, contact.get("name","")
                         )
+                        if not existing_c and contact.get("name"):
+                            await conn.execute(
+                                """
+                                INSERT INTO lu_contacts (company_id, name, role, email, phone, linkedin_url, is_primary)
+                                VALUES ($1,$2,$3,$4,$5,$6,$7)
+                                """,
+                                cid, contact["name"], contact.get("role"),
+                                contact.get("email"), contact.get("phone"),
+                                contact.get("linkedin_url"),
+                                bool(contact.get("is_primary", False)),
+                            )
 
-                    # Asigna al usuario
                     await _assign_to_user(uid, cid)
                     batch.append(cid)
                 except Exception as e:
