@@ -568,6 +568,45 @@ app.get('/api/gallery', requireAuth, async (req, res) => {
   res.json({ items, total_cost })
 })
 
+// ─── ANALYTICS — métricas de costo últimos 30 días ─────────────────────────
+app.get('/api/analytics', requireAuth, async (req, res) => {
+  if (!dbReady) return res.json({ totalCost: 0, byCost: [], byDate: [], itemCount: 0 })
+  const clientId = req.query.client_id || ''
+
+  // Costo total + por modelo (últimos 30 días)
+  const { rows: byCost } = await db.query(
+    `SELECT model, COUNT(*) as qty, SUM(cost_usd) as total
+     FROM (
+       SELECT model, cost_usd FROM user_images
+       WHERE user_id=$1 AND client_id=$2 AND created_at > NOW() - INTERVAL '30 days'
+       UNION ALL
+       SELECT model, cost_usd FROM user_videos
+       WHERE user_id=$1 AND client_id=$2 AND created_at > NOW() - INTERVAL '30 days'
+     ) t
+     GROUP BY model ORDER BY total DESC`,
+    [req.user.id, clientId]
+  )
+
+  // Tendencia diaria
+  const { rows: byDate } = await db.query(
+    `SELECT DATE(created_at) as date, COUNT(*) as qty, SUM(cost_usd) as total
+     FROM (
+       SELECT created_at, cost_usd FROM user_images
+       WHERE user_id=$1 AND client_id=$2 AND created_at > NOW() - INTERVAL '30 days'
+       UNION ALL
+       SELECT created_at, cost_usd FROM user_videos
+       WHERE user_id=$1 AND client_id=$2 AND created_at > NOW() - INTERVAL '30 days'
+     ) t
+     GROUP BY DATE(created_at) ORDER BY date DESC`,
+    [req.user.id, clientId]
+  )
+
+  const totalCost = byCost.reduce((sum, row) => sum + parseFloat(row.total || 0), 0)
+  const itemCount = byCost.reduce((sum, row) => sum + parseInt(row.qty || 0), 0)
+
+  res.json({ totalCost, byCost, byDate, itemCount })
+})
+
 // ─── CANVAS — auto-save/load por usuario ─────────────────────────────────────
 app.get('/api/canvas', requireAuth, async (req, res) => {
   if (!dbReady) return res.json({ nodes: [], edges: [] })

@@ -13,7 +13,7 @@ import {
   Loader2, AlertCircle, Download, Plus, ChevronDown, ChevronUp,
   LayoutTemplate, Trash2, Save, FolderOpen, Check,
   ChevronRight, Palette, Pencil, Play, Shuffle, FolderPlus, StickyNote,
-  Bot, Send, RefreshCw, Sparkles, GalleryHorizontalEnd, Coins,
+  Bot, Send, RefreshCw, Sparkles, GalleryHorizontalEnd, Coins, BarChart3,
 } from 'lucide-react'
 
 const SERVER = import.meta.env.PROD ? '' : 'http://localhost:3001'
@@ -1792,6 +1792,177 @@ const VideoNode = ({ id, data }) => {
         )}
       </div>
     </Shell>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── AnalyticsPanel — drawer lateral con métricas de costo ─────────────────────
+const AnalyticsPanel = ({ visible, onClose }) => {
+  const [data, setData] = useState({ totalCost: 0, byCost: [], byDate: [], itemCount: 0 })
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!visible) return
+    setLoading(true)
+    const token = localStorage.getItem('fai_token')
+    if (!token) { setLoading(false); return }
+    const clientId = getActiveClient()?.id || ''
+    fetch(`${SERVER}/api/analytics?client_id=${clientId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false) })
+      .catch(() => { setLoading(false) })
+  }, [visible])
+
+  return (
+    <>
+      <div style={{
+        position:'fixed', inset:0, zIndex:1999,
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? 'auto' : 'none',
+        transition: 'opacity 250ms ease',
+        background: 'rgba(0,0,0,0.4)',
+      }} onClick={onClose}/>
+
+      <div style={{
+        position:'fixed', left:0, top:0, bottom:0, width:340, zIndex:2000,
+        background: 'rgba(5,5,12,0.88)', backdropFilter: 'blur(28px)',
+        transform: `translateX(${visible?0:-360}px)`,
+        transition: 'transform 300ms cubic-bezier(0.32,0.72,0,1)',
+        borderRight: '1px solid rgba(255,255,255,0.08)',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '16px 14px',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>Analytics KIE</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+              30 días
+            </div>
+          </div>
+          <button onClick={onClose}
+            style={{
+              width: 28, height: 28, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.06)', border: 'none',
+              cursor: 'pointer', color: 'rgba(255,255,255,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 150ms ease',
+            }}
+            onMouseEnter={e => {e.target.style.background='rgba(255,255,255,0.12)'; e.target.style.color='rgba(255,255,255,0.8)'}}
+            onMouseLeave={e => {e.target.style.background='rgba(255,255,255,0.06)'; e.target.style.color='rgba(255,255,255,0.5)'}}>
+            <X style={{width:12,height:12}}/>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '14px' }} className="nowheel nopan">
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <Loader2 style={{width:18,height:18,color:'rgba(255,255,255,0.3)'}} className="animate-spin"/>
+            </div>
+          ) : (
+            <>
+              {/* Total */}
+              <div style={{
+                background: 'rgba(255,255,255,0.06)', borderRadius: 12,
+                padding: '12px', marginBottom: '12px',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>COSTO TOTAL</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>
+                  ${data.totalCost.toFixed(2)}
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
+                  {data.itemCount} items
+                </div>
+              </div>
+
+              {/* Por modelo */}
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Por modelo
+                </div>
+                {data.byCost.length === 0 ? (
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', padding: '10px 0' }}>Sin datos</div>
+                ) : (
+                  data.byCost.map(row => {
+                    const pct = data.totalCost > 0 ? (parseFloat(row.total) / data.totalCost * 100).toFixed(0) : 0
+                    return (
+                      <div key={row.model} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)',
+                      }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>
+                            {row.model || '(sin modelo)'}
+                          </div>
+                          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>
+                            {row.qty} items
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>
+                            ${parseFloat(row.total).toFixed(3)}
+                          </div>
+                          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>
+                            {pct}%
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+
+              {/* Tendencia diaria */}
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Últimos 7 días
+                </div>
+                {data.byDate.length === 0 ? (
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', padding: '10px 0' }}>Sin datos</div>
+                ) : (
+                  data.byDate.slice(0, 7).map(row => {
+                    const date = new Date(row.date)
+                    const label = date.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })
+                    const maxCost = Math.max(...data.byDate.map(r => parseFloat(r.total)))
+                    const barWidth = maxCost > 0 ? (parseFloat(row.total) / maxCost * 100) : 0
+                    return (
+                      <div key={row.date} style={{
+                        display: 'flex', gap: 8, alignItems: 'center',
+                        padding: '6px 0',
+                      }}>
+                        <div style={{ width: 40, fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>
+                          {label}
+                        </div>
+                        <div style={{
+                          flex: 1, height: 20, background: 'rgba(255,255,255,0.06)',
+                          borderRadius: 3, overflow: 'hidden', position: 'relative',
+                        }}>
+                          <div style={{
+                            width: `${barWidth}%`, height: '100%',
+                            background: 'linear-gradient(90deg, rgba(96,165,250,0.6), rgba(167,139,250,0.6))',
+                            borderRadius: 2,
+                          }}/>
+                        </div>
+                        <div style={{ width: 50, textAlign: 'right', fontSize: 9, color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>
+                          ${parseFloat(row.total).toFixed(2)}
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -3633,6 +3804,7 @@ export default function App() {
   const [showStyles, setShowStyles]         = useState(false)
   const [showImageHistory, setShowImgHistory] = useState(false)
   const [showGallery, setShowGallery]       = useState(false)
+  const [showAnalytics, setShowAnalytics]   = useState(false)
   const [showClients, setShowClients]       = useState(false)
   const [activeClient, setActiveClientState] = useState(() => getActiveClient())
   const [globalStyleId, setGlobalStyleId] = useState(null)
@@ -3916,6 +4088,20 @@ export default function App() {
           <ChevronDown size={10} style={{opacity:0.5}}/>
         </button>
 
+        {/* Analytics */}
+        <span style={{width:1,height:14,background:'rgba(255,255,255,0.1)',margin:'0 2px'}}/>
+        <button
+          className="glass-btn glass-btn-neutral"
+          style={{padding:'6px 12px',fontSize:12,fontWeight:500,
+            letterSpacing:'-0.01em',display:'flex',alignItems:'center',gap:6,
+            color: showAnalytics ? 'rgba(96,165,250,0.9)' : 'rgba(96,165,250,0.65)',
+            background: showAnalytics ? 'rgba(59,130,246,0.12)' : undefined,
+          }}
+          onClick={()=>setShowAnalytics(v=>!v)}>
+          <BarChart3 style={{width:13,height:13}}/>
+          Costos
+        </button>
+
         {/* Galería 30 días */}
         <span style={{width:1,height:14,background:'rgba(255,255,255,0.1)',margin:'0 2px'}}/>
         <button
@@ -4031,6 +4217,12 @@ export default function App() {
             style={{position:'fixed',inset:0,zIndex:190,background:'rgba(0,0,0,0.3)',backdropFilter:'blur(2px)'}}/>
         </>
       )}
+
+      {/* Panel Analytics */}
+      <AnalyticsPanel
+        visible={showAnalytics}
+        onClose={()=>setShowAnalytics(false)}
+      />
 
       {/* Panel Galería 30 días */}
       <GalleryPanel
