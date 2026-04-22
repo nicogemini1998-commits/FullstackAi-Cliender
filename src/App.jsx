@@ -1012,7 +1012,7 @@ const ResultVideoNode = ({ id, data }) => {
 // ── ImageNode
 // ══════════════════════════════════════════════════════════════════════════════
 const ImageNode = ({ id, data }) => {
-  const { getNode, addNodes, setNodes } = useReactFlow()
+  const { getNode, addNodes, addEdges, setNodes } = useReactFlow()
   const [mIdx, setMIdx]   = useState(0)
   const [prompt, setPrompt] = useState('')
   const [ar, setAr]       = useState('1:1')
@@ -1165,7 +1165,7 @@ const ImageNode = ({ id, data }) => {
               refImages: imgIn.map(f => f.url) }),
           })
           const json = await r.json()
-          if (json.code !== 200) { completed++; setDone(completed); if (completed >= effectiveQty) setBusy(false); return }
+          if (json.code !== 200) { completed++; setDone(completed); if (completed >= effectiveQty) setBusy(false); onError(json.msg || `Error ${json.code}`); return }
           poll(json.data.taskId, onImageReady, onError)
         }
       })()))
@@ -1463,7 +1463,7 @@ const ImageNode = ({ id, data }) => {
               )}
 
               <DropZone files={[]} onAdd={f=>setImgIn(v=>[...v,f])} onRemove={()=>{}}
-                accept="image/jpeg,image/png,image/webp" hint="JPEG · PNG · WebP · máx 30MB" max={model.maxImg||10}/>
+                accept="image/jpeg,image/png,image/webp" hint="JPEG · PNG · WebP · máx 30MB" max={Math.max(0,(model.maxImg||10)-imgIn.length)}/>
             </div>
 
             {/* Estilo Freepik (solo para Freepik Standard) */}
