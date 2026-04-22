@@ -104,6 +104,7 @@ const VIDEO_MODELS = [
   { id:'veo3_fast',              label:'Veo3 Fast',   ar:['16:9','9:16','4:5'],                    dur:['5','10','15','20'], sImg:true,  maxImg:3 },
   { id:'veo3',                   label:'Veo3 Quality',ar:['16:9','9:16','4:5'],                    dur:['5','10','15','20'], sImg:true,  maxImg:3 },
   { id:'bytedance/seedance-2',   label:'Seedance 2',  ar:['16:9','9:16','1:1','4:3','4:5'],        dur:['5','8','10','15'],  sImg:true,  maxImg:10, sAud:true, maxAud:10 },
+  { id:'bytedance/seedance-2-fast', label:'Seedance 2-Fast', ar:['16:9','9:16','1:1','4:3','4:5'],  dur:['5','8','10','15'],  sImg:true,  maxImg:10, sAud:true, maxAud:10 },
   { id:'kling-2.6/text-to-video',label:'Kling 2.6',  ar:['1:1','16:9','9:16','4:5'],              dur:['5','10'],           sImg:true,  maxImg:1 },
   { id:'wan/2-7-text-to-video',  label:'WAN 2.7',     ar:['16:9','9:16','1:1','4:3','3:4','4:5'], dur:['5','10','15'] },
   { id:'sora-2-text-to-video',   label:'Sora-2',      ar:['16:9','9:16','4:5'],                    dur:['10'] },
