@@ -1291,7 +1291,7 @@ const ImageNode = ({ id, data }) => {
             justifyContent:'center',gap:7,color:'rgba(255,255,255,0.12)'}}>
             {busy
               ? <><Loader2 style={{width:18,height:18,color:`${C.image}80`}} className="animate-spin"/>
-                  <span style={{fontSize:10.5,color:`${C.image}80`}}>Generando en KIE AI…</span></>
+                  <span style={{fontSize:10.5,color:`${C.image}80`}}>Generando en {model.freepik?'Freepik':'KIE AI'}…</span></>
               : <><ImageIcon style={{width:20,height:20,opacity:0.18}}/>
                   <span style={{fontSize:10.5}}>Tu imagen aparecerá aquí</span></>
             }
