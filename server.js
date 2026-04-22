@@ -683,99 +683,18 @@ app.post('/api/generate', async (req, res) => {
   if (auds.length) console.log(`   audURLs: ${JSON.stringify(auds)}`)
 
   try {
-    // ── Freepik — imagen ──────────────────────────────────────────────────────
+    // ── Freepik — Nano Banana ────────────────────────────────────────────────────
     if (model.startsWith('freepik/')) {
       if (!FREEPIK_KEY) return res.status(503).json({ error: 'FREEPIK_API_KEY no configurada' })
 
-      // Mapeo de aspect ratio a los formatos de Freepik
-      const fkSizeMap = {
-        '1:1':'square','4:3':'landscape_4_3','3:4':'portrait_3_4',
-        '16:9':'widescreen','9:16':'portrait_9_16','3:2':'classic_3_2','2:3':'portrait_2_3',
-        '21:9':'film_21_9','9:21':'film_9_21',
-      }
-      const fkAspectMap = {
-        '1:1':'square_1_1','4:3':'classic_4_3','3:4':'traditional_3_4',
-        '16:9':'widescreen_16_9','9:16':'social_story_9_16','3:2':'standard_3_2','2:3':'portrait_2_3',
-        '21:9':'film_horizontal_21_9','9:21':'film_vertical_9_21',
+      const nanoBananaModels = {
+        'freepik/nano-banana-2': '/text-to-image/nano-banana-2',
+        'freepik/nano-banana-pro': '/text-to-image/nano-banana-pro',
       }
 
-      if (model === 'freepik/text-to-image') {
-        // Síncrono — devuelve base64 directamente
-        const body = {
-          prompt,
-          num_images: 1,
-          image: { size: fkSizeMap[aspectRatio] || 'square' },
-        }
-        const freepikStyle = req.body.freepikStyle
-        if (freepikStyle) body.styling = { style: freepikStyle }
-
-        const r = await fetch(`${FREEPIK_BASE}/ai/text-to-image`, {
-          method: 'POST',
-          headers: { 'x-freepik-api-key': FREEPIK_KEY, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        const d = await r.json()
-        if (!r.ok) return res.json({ error: d.message || 'Error Freepik' })
-        const b64 = d.data?.[0]?.base64
-        if (!b64) return res.json({ error: 'Sin imagen en respuesta Freepik' })
-        // Convertir base64 a data URL
-        const url = `data:image/jpeg;base64,${b64}`
-        return res.json({ code: 200, data: { url } })
-      }
-
-      if (model === 'freepik/mystic') {
-        // Asíncrono — devuelve task_id con prefijo fk_
-        const body = {
-          prompt,
-          num_images: 1,
-          aspect_ratio: fkAspectMap[aspectRatio] || 'square_1_1',
-        }
-        if (imgs.length) body.image_reference = { url: imgs[0], strength: 0.7 }
-
-        const r = await fetch(`${FREEPIK_BASE}/ai/mystic`, {
-          method: 'POST',
-          headers: { 'x-freepik-api-key': FREEPIK_KEY, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        const d = await r.json()
-        if (!r.ok) return res.json({ error: d.message || 'Error Freepik Mystic' })
-        const taskId = d.data?.task_id
-        if (!taskId) return res.json({ error: 'Sin task_id en respuesta Freepik' })
-        return res.json({ code: 200, data: { taskId: `fk_${taskId}` } })
-      }
-
-      // ── Flux & Seedream async modelos ──────────────────────────────────────
-      const fluxAsyncModels = {
-        'freepik/flux-kontext-pro': '/text-to-image/flux-kontext-pro',
-        'freepik/flux-2-klein': '/text-to-image/flux-2-klein',
-        'freepik/flux-2-turbo': '/text-to-image/flux-2-turbo',
-        'freepik/flux-dev': '/text-to-image/flux-dev',
-        'freepik/seedream-v4-5': '/text-to-image/seedream-v4-5',
-        'freepik/imagen3': '/text-to-image/imagen3',
-      }
-
-      if (fluxAsyncModels[model]) {
-        // Modelos async Flux y Seedream
-        const endpoint = fluxAsyncModels[model]
+      if (nanoBananaModels[model]) {
+        const endpoint = nanoBananaModels[model]
         const body = { prompt, aspect_ratio: aspectRatio || '1:1' }
-
-        if (model === 'freepik/flux-kontext-pro' && imgs.length) {
-          body.input_image = imgs[0]
-          body.guidance = 3.0
-          body.steps = 50
-        }
-        if (model === 'freepik/flux-2-klein' && imgs.length) {
-          body.input_image = imgs[0]
-        }
-        if (model === 'freepik/flux-2-turbo') {
-          body.guidance_scale = 2.5
-        }
-        if (model === 'freepik/flux-dev') {
-          body.styling = { effects: [] }
-        }
-        if (model === 'freepik/seedream-v4-5') {
-          body.guidance_scale = 2.5
-        }
 
         const r = await fetch(`${FREEPIK_BASE}${endpoint}`, {
           method: 'POST',
@@ -787,7 +706,7 @@ app.post('/api/generate', async (req, res) => {
         const taskId = d.data?.task_id
         if (!taskId) return res.json({ error: `Sin task_id en respuesta ${model}` })
         const modelSlug = model.replace('freepik/', '')
-        return res.json({ code: 200, data: { taskId: `fk2_${modelSlug}_${taskId}` } })
+        return res.json({ code: 200, data: { taskId: `nb_${modelSlug}_${taskId}` } })
       }
     }
 
@@ -955,6 +874,37 @@ app.get('/api/task/:taskId', async (req, res) => {
       const json = await r.json()
       console.log(`KREA poll (${taskId}) →`, JSON.stringify(json).slice(0, 300))
       return res.json(json)
+    }
+
+    // Nano Banana — polling con Freepik
+    if (taskId.startsWith('nb_')) {
+      if (!FREEPIK_KEY) return res.status(503).json({ error: 'FREEPIK_API_KEY no configurada' })
+      const parts = taskId.split('_')
+      const modelSlug = parts[1]
+      const realTaskId = parts.slice(2).join('_')
+      const modelEndpoint = {
+        'nano-banana-2': '/text-to-image/nano-banana-2',
+        'nano-banana-pro': '/text-to-image/nano-banana-pro',
+      }[modelSlug]
+
+      if (!modelEndpoint) return res.json({ code: 200, data: { state: 'fail', failMsg: 'Modelo desconocido' } })
+
+      const r = await fetch(`${FREEPIK_BASE}${modelEndpoint}/${realTaskId}`, {
+        method: 'GET',
+        headers: { 'x-freepik-api-key': FREEPIK_KEY },
+      })
+      const json = await r.json()
+      console.log(`Nano Banana poll (${taskId}) →`, JSON.stringify(json).slice(0, 300))
+
+      const d = json.data || {}
+      if (d.status === 'completed' || d.state === 'success') {
+        const resultUrls = d.generated ? d.generated.map(g => g.url).filter(Boolean) : []
+        return res.json({ code: 200, data: { state: 'success', resultJson: JSON.stringify({ resultUrls }) } })
+      }
+      if (d.status === 'failed' || d.state === 'fail') {
+        return res.json({ code: 200, data: { state: 'fail', failMsg: d.error || 'Generación fallida' } })
+      }
+      return res.json({ code: 200, data: { state: 'generating', progress: d.progress || 0 } })
     }
 
     if (taskId.startsWith('veo')) {
