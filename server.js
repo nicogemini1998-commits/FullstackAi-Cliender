@@ -72,9 +72,24 @@ async function initSchema() {
       prompt TEXT DEFAULT '',
       model TEXT DEFAULT '',
       aspect_ratio TEXT DEFAULT '1:1',
-      created_at TIMESTAMPTZ DEFAULT NOW()
+      cost_usd NUMERIC(10,6) DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      expires_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '30 days'
     );
     CREATE INDEX IF NOT EXISTS idx_user_images_user ON user_images(user_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS user_videos (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      prompt TEXT DEFAULT '',
+      model TEXT DEFAULT '',
+      aspect_ratio TEXT DEFAULT '16:9',
+      duration INTEGER DEFAULT 5,
+      cost_usd NUMERIC(10,6) DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      expires_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '30 days'
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_videos_user ON user_videos(user_id, created_at DESC);
     CREATE TABLE IF NOT EXISTS clients (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name TEXT NOT NULL,
@@ -93,6 +108,9 @@ async function initSchema() {
       END IF;
       IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='user_images' AND column_name='client_id') THEN
         ALTER TABLE user_images ADD COLUMN client_id TEXT DEFAULT '';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='user_videos' AND column_name='client_id') THEN
+        ALTER TABLE user_videos ADD COLUMN client_id TEXT DEFAULT '';
       END IF;
       IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='templates' AND column_name='client_id') THEN
         ALTER TABLE templates ADD COLUMN client_id TEXT DEFAULT '';
@@ -473,12 +491,12 @@ app.delete('/api/clients/:id', requireAuth, async (req, res) => {
 // ─── GALERÍA — historial de imágenes por usuario ─────────────────────────────
 app.post('/api/images', requireAuth, async (req, res) => {
   if (!dbReady) return res.json({ ok: true })
-  const { url, prompt, model, aspect_ratio, client_id } = req.body
+  const { url, prompt, model, aspect_ratio, cost_usd, client_id } = req.body
   if (!url) return res.status(400).json({ error: 'url requerida' })
   if (url.startsWith('data:')) return res.json({ ok: true, skipped: true })
   await db.query(
-    'INSERT INTO user_images(user_id, url, prompt, model, aspect_ratio, client_id) VALUES($1,$2,$3,$4,$5,$6)',
-    [req.user.id, url, prompt||'', model||'', aspect_ratio||'1:1', client_id||'']
+    'INSERT INTO user_images(user_id, url, prompt, model, aspect_ratio, cost_usd, client_id) VALUES($1,$2,$3,$4,$5,$6,$7)',
+    [req.user.id, url, prompt||'', model||'', aspect_ratio||'1:1', cost_usd||0, client_id||'']
   )
   res.json({ ok: true })
 })
@@ -500,6 +518,54 @@ app.delete('/api/images/:id', requireAuth, async (req, res) => {
   if (!dbReady) return res.json({ ok: true })
   await db.query('DELETE FROM user_images WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id])
   res.json({ ok: true })
+})
+
+// ─── VIDEOS — guardar videos generados ───────────────────────────────────────
+app.post('/api/videos', requireAuth, async (req, res) => {
+  if (!dbReady) return res.json({ ok: true })
+  const { url, prompt, model, aspect_ratio, duration, cost_usd, client_id } = req.body
+  if (!url) return res.status(400).json({ error: 'url requerida' })
+  if (url.startsWith('data:')) return res.json({ ok: true, skipped: true })
+  await db.query(
+    'INSERT INTO user_videos(user_id, url, prompt, model, aspect_ratio, duration, cost_usd, client_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+    [req.user.id, url, prompt||'', model||'', aspect_ratio||'16:9', duration||5, cost_usd||0, client_id||'']
+  )
+  res.json({ ok: true })
+})
+
+// ─── GALLERY — imágenes + videos del último mes ───────────────────────────────
+app.get('/api/gallery', requireAuth, async (req, res) => {
+  if (!dbReady) return res.json({ items: [], total_cost: 0 })
+  const clientId = req.query.client_id || ''
+  const limit = Math.min(parseInt(req.query.limit)||200, 500)
+
+  // Imágenes no expiradas
+  const { rows: images } = await db.query(
+    `SELECT id, 'image' as type, url, prompt, model, NULL as duration, cost_usd, created_at,
+            CEIL(EXTRACT(DAY FROM expires_at - NOW())) as days_left
+     FROM user_images
+     WHERE user_id=$1 AND client_id=$2 AND expires_at > NOW()
+     ORDER BY created_at DESC`,
+    [req.user.id, clientId]
+  )
+
+  // Videos no expirados
+  const { rows: videos } = await db.query(
+    `SELECT id, 'video' as type, url, prompt, model, duration, cost_usd, created_at,
+            CEIL(EXTRACT(DAY FROM expires_at - NOW())) as days_left
+     FROM user_videos
+     WHERE user_id=$1 AND client_id=$2 AND expires_at > NOW()
+     ORDER BY created_at DESC`,
+    [req.user.id, clientId]
+  )
+
+  // Mezclar y ordenar por fecha
+  const items = [...images, ...videos].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, limit)
+
+  // Costo total
+  const total_cost = items.reduce((sum, item) => sum + parseFloat(item.cost_usd || 0), 0)
+
+  res.json({ items, total_cost })
 })
 
 // ─── CANVAS — auto-save/load por usuario ─────────────────────────────────────
@@ -1017,6 +1083,21 @@ watchFile(WF_FILE, { interval: 400 }, () => {
     console.log(`⚡ Workflow file trigger: ${data.prompts.length} prompts`)
   } catch (e) { console.error('Workflow parse error:', e.message) }
 })
+
+// ─── Cleanup job — borrar imágenes y videos expirados cada hora ─────────────────
+if (dbReady) {
+  setInterval(async () => {
+    try {
+      const r1 = await db.query('DELETE FROM user_images WHERE expires_at < NOW()')
+      const r2 = await db.query('DELETE FROM user_videos WHERE expires_at < NOW()')
+      if (r1.rowCount > 0 || r2.rowCount > 0) {
+        console.log(`🗑️  Cleanup: ${r1.rowCount} imágenes + ${r2.rowCount} videos eliminados`)
+      }
+    } catch (err) {
+      console.error('Cleanup error:', err.message)
+    }
+  }, 3600000) // cada hora
+}
 
 httpServer.listen(3001, () => {
   console.log('🚀 Cliender OS Server → http://localhost:3001')

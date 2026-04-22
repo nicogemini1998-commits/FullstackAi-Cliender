@@ -13,7 +13,7 @@ import {
   Loader2, AlertCircle, Download, Plus, ChevronDown, ChevronUp,
   LayoutTemplate, Trash2, Save, FolderOpen, Check,
   ChevronRight, Palette, Pencil, Play, Shuffle, FolderPlus, StickyNote,
-  Bot, Send, RefreshCw, Sparkles,
+  Bot, Send, RefreshCw, Sparkles, GalleryHorizontalEnd, Coins,
 } from 'lucide-react'
 
 const SERVER = import.meta.env.PROD ? '' : 'http://localhost:3001'
@@ -109,6 +109,18 @@ const VIDEO_MODELS = [
   { id:'wan/2-7-text-to-video',  label:'WAN 2.7',     ar:['16:9','9:16','1:1','4:3','3:4','4:5'], dur:['5','10','15'] },
   { id:'sora-2-text-to-video',   label:'Sora-2',      ar:['16:9','9:16','4:5'],                    dur:['10'] },
 ]
+
+const MODEL_COSTS = {
+  'nano-banana-2':            0.025,
+  'nano-banana-pro':          0.040,
+  'veo3_fast':                0.050,
+  'veo3':                     0.250,
+  'bytedance/seedance-2':     0.030,
+  'bytedance/seedance-2-fast':0.015,
+  'kling-2.6/text-to-video':  0.065,
+  'wan/2-7-text-to-video':    0.015,
+  'sora-2-text-to-video':     0.015,
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ── Lightbox — previsualización fullscreen ────────────────────────────────────
@@ -1010,6 +1022,7 @@ const ImageNode = ({ id, data }) => {
   const [busy, setBusy]             = useState(false)
   const [done, setDone]             = useState(0)
   const [singleUrl, setSingleUrl]   = useState(null)
+  const [cost, setCost]             = useState(0)
   const [err, setErr]               = useState(null)
   const [freepikStyle, setFkStyle]  = useState('photo')
   // Estado del panel Krea-style
@@ -1086,7 +1099,9 @@ const ImageNode = ({ id, data }) => {
 
     let completed = 0
 
-    const saveImageToHistory = (url) => {
+    const imageCost = MODEL_COSTS[model.id] || 0
+
+    const saveImageToHistory = (url, costUsd) => {
       if (url.startsWith('data:')) return // no guardar base64
       const token = localStorage.getItem('fai_token')
       if (!token) return
@@ -1094,13 +1109,14 @@ const ImageNode = ({ id, data }) => {
       fetch(`${SERVER}/api/images`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url, prompt, model: model.id, aspect_ratio: ar, client_id: clientId }),
+        body: JSON.stringify({ url, prompt, model: model.id, aspect_ratio: ar, cost_usd: costUsd, client_id: clientId }),
       }).catch(() => {})
     }
 
     const onImageReady = (url) => {
       completed++; setDone(completed)
-      saveImageToHistory(url)
+      saveImageToHistory(url, imageCost)
+      setCost(imageCost)
       if (effectiveQty === 1) {
         setSingleUrl(url)
         // Crear ResultImageNode conectado al ImageNode
@@ -1299,6 +1315,22 @@ const ImageNode = ({ id, data }) => {
           </div>
         )}
       </div>
+
+      {/* Cost badge */}
+      {singleUrl && cost > 0 && (
+        <div style={{
+          display:'flex', alignItems:'center', gap:5,
+          padding:'4px 10px',
+          background:'rgba(255,255,255,0.04)',
+          borderTop:'1px solid rgba(255,255,255,0.04)',
+          color:'rgba(255,255,255,0.28)', fontSize:10, fontWeight:500,
+        }}>
+          <Coins style={{width:9,height:9}}/>
+          <span>≈ ${cost.toFixed(3)}</span>
+          <span style={{opacity:0.5}}>·</span>
+          <span style={{opacity:0.5}}>{model.label}</span>
+        </div>
+      )}
 
       {/* Scrollable content */}
       <div style={{flex:1,overflow:'auto',display:'flex',flexDirection:'column'}} className="nowheel nopan">
@@ -1526,6 +1558,7 @@ const VideoNode = ({ id, data }) => {
   const [busy,  setBusy]  = useState(false)
   const [prog,  setProg]  = useState(0)
   const [videoUrl,setVideoUrl]= useState(null)
+  const [cost, setCost]         = useState(0)
   const [err,   setErr]   = useState(null)
   const [openScenarios, setOpenScenarios] = useState(false)
   const poll = usePoll(5000)
@@ -1564,10 +1597,21 @@ const VideoNode = ({ id, data }) => {
       const json = await r.json()
       const taskId = json.data?.taskId || json.taskId
       if (!taskId) throw new Error(json.msg || json.error || `Error ${r.status}`)
+      const videoCost = (MODEL_COSTS[m.id] || 0) * parseFloat(dur)
       poll(
         taskId,
         url => {
-          setVideoUrl(url); setBusy(false); setProg(100)
+          setVideoUrl(url); setBusy(false); setProg(100); setCost(videoCost)
+          // Auto-save video
+          const token = localStorage.getItem('fai_token')
+          if (token) {
+            const clientId = getActiveClient()?.id || ''
+            fetch(`${SERVER}/api/videos`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ url, prompt, model: m.id, aspect_ratio: ar, duration: parseInt(dur), cost_usd: videoCost, client_id: clientId }),
+            }).catch(() => {})
+          }
           const rvid = `resvid-${Date.now()}`
           addNodes({ id:rvid, type:'resultVideo',
             position:{ x:pos.x+pw+60, y:pos.y },
@@ -1640,6 +1684,22 @@ const VideoNode = ({ id, data }) => {
           </div>
         )}
       </div>
+
+      {/* Cost badge */}
+      {videoUrl && cost > 0 && (
+        <div style={{
+          display:'flex', alignItems:'center', gap:5,
+          padding:'4px 10px',
+          background:'rgba(255,255,255,0.04)',
+          borderTop:'1px solid rgba(255,255,255,0.04)',
+          color:'rgba(255,255,255,0.28)', fontSize:10, fontWeight:500,
+        }}>
+          <Coins style={{width:9,height:9}}/>
+          <span>≈ ${cost.toFixed(3)}</span>
+          <span style={{opacity:0.5}}>·</span>
+          <span style={{opacity:0.5}}>{m.label}</span>
+        </div>
+      )}
 
       {/* Scrollable */}
       <div style={{flex:1,overflow:'auto',display:'flex',flexDirection:'column'}} className="nowheel nopan">
@@ -1732,6 +1792,162 @@ const VideoNode = ({ id, data }) => {
         )}
       </div>
     </Shell>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── GalleryPanel — drawer lateral con historial 30 días ─────────────────────────
+const GalleryPanel = ({ visible, onClose, onItemClick }) => {
+  const [items, setItems] = useState([])
+  const [totalCost, setTotalCost] = useState(0)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!visible) return
+    setLoading(true)
+    const token = localStorage.getItem('fai_token')
+    if (!token) { setLoading(false); return }
+    const clientId = getActiveClient()?.id || ''
+    fetch(`${SERVER}/api/gallery?client_id=${clientId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(d => { setItems(d.items||[]); setTotalCost(d.total_cost||0); setLoading(false) })
+      .catch(() => { setLoading(false) })
+  }, [visible])
+
+  const groupByDate = () => {
+    const today = new Date().toDateString()
+    const yesterday = new Date(Date.now()-86400000).toDateString()
+    const groups = { Hoy: [], Ayer: [], otros: [] }
+    items.forEach(item => {
+      const itemDate = new Date(item.created_at).toDateString()
+      if (itemDate === today) groups.Hoy.push(item)
+      else if (itemDate === yesterday) groups.Ayer.push(item)
+      else groups.otros.push(item)
+    })
+    return Object.entries(groups).filter(([,v])=>v.length>0)
+  }
+
+  const groups = groupByDate()
+
+  return (
+    <>
+      <div style={{
+        position:'fixed', inset:0, zIndex:1999,
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? 'auto' : 'none',
+        transition: 'opacity 250ms ease',
+        background: 'rgba(0,0,0,0.4)',
+      }} onClick={onClose}/>
+
+      <div style={{
+        position:'fixed', right:0, top:0, bottom:0, width:340, zIndex:2000,
+        background: 'rgba(5,5,12,0.88)', backdropFilter: 'blur(28px)',
+        transform: `translateX(${visible?0:360}px)`,
+        transition: 'transform 300ms cubic-bezier(0.32,0.72,0,1)',
+        borderLeft: '1px solid rgba(255,255,255,0.08)',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '16px 14px',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>Galería 30 días</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+              ≈ ${totalCost.toFixed(2)} total
+            </div>
+          </div>
+          <button onClick={onClose}
+            style={{
+              width: 28, height: 28, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.06)', border: 'none',
+              cursor: 'pointer', color: 'rgba(255,255,255,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 150ms ease',
+            }}
+            onMouseEnter={e => {e.target.style.background='rgba(255,255,255,0.12)'; e.target.style.color='rgba(255,255,255,0.8)'}}
+            onMouseLeave={e => {e.target.style.background='rgba(255,255,255,0.06)'; e.target.style.color='rgba(255,255,255,0.5)'}}>
+            <X style={{width:12,height:12}}/>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, overflow: 'auto' }} className="nowheel nopan">
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <Loader2 style={{width:18,height:18,color:'rgba(255,255,255,0.3)'}} className="animate-spin"/>
+            </div>
+          ) : items.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 12 }}>
+              Sin elementos aún
+            </div>
+          ) : (
+            <>
+              {groups.map(([label, groupItems]) => (
+                <div key={label}>
+                  <div style={{
+                    padding: '8px 14px 6px',
+                    fontSize: 10, fontWeight: 500,
+                    color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.04em',
+                  }}>
+                    {label}
+                  </div>
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: 'repeat(3,1fr)',
+                    gap: '6px', padding: '0 8px 12px',
+                  }}>
+                    {groupItems.map(item => (
+                      <div key={`${item.type}-${item.id}`}
+                        onClick={() => { onItemClick({url:item.url,type:item.type}); onClose() }}
+                        style={{
+                          position: 'relative', paddingTop: '100%',
+                          cursor: 'pointer', borderRadius: 8,
+                          overflow: 'hidden', background: 'rgba(0,0,0,0.3)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          transition: 'all 150ms ease',
+                        }}
+                        onMouseEnter={e=>{e.currentTarget.style.borderColor='rgba(255,255,255,0.16)'; e.currentTarget.style.background='rgba(0,0,0,0.5)'}}
+                        onMouseLeave={e=>{e.currentTarget.style.borderColor='rgba(255,255,255,0.08)'; e.currentTarget.style.background='rgba(0,0,0,0.3)'}}>
+                        <img src={item.url} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>
+                        {/* Badges */}
+                        <div style={{position:'absolute',bottom:4,left:4,display:'flex',gap:3}}>
+                          <span style={{
+                            fontSize:8,fontWeight:600,
+                            background:'rgba(0,0,0,0.6)',backdropFilter:'blur(8px)',
+                            color:'rgba(255,255,255,0.7)',
+                            padding:'2px 6px',borderRadius:4,textTransform:'uppercase'
+                          }}>
+                            {item.type==='video'?'VID':'IMG'}
+                          </span>
+                          {item.days_left < 7 && (
+                            <span style={{
+                              fontSize:8,fontWeight:600,
+                              background:'rgba(249,115,22,0.7)',backdropFilter:'blur(8px)',
+                              color:'white',padding:'2px 6px',borderRadius:4
+                            }}>
+                              {item.days_left}d
+                            </span>
+                          )}
+                        </div>
+                        <div style={{position:'absolute',top:4,right:4,fontSize:8,fontWeight:500,
+                          color:'rgba(255,255,255,0.6)',background:'rgba(0,0,0,0.5)',
+                          backdropFilter:'blur(8px)',padding:'2px 6px',borderRadius:4}}>
+                          ${item.cost_usd?.toFixed(2)||'0.00'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -3416,6 +3632,7 @@ export default function App() {
   const [showTemplates, setShowTemplates]   = useState(false)
   const [showStyles, setShowStyles]         = useState(false)
   const [showImageHistory, setShowImgHistory] = useState(false)
+  const [showGallery, setShowGallery]       = useState(false)
   const [showClients, setShowClients]       = useState(false)
   const [activeClient, setActiveClientState] = useState(() => getActiveClient())
   const [globalStyleId, setGlobalStyleId] = useState(null)
@@ -3699,17 +3916,17 @@ export default function App() {
           <ChevronDown size={10} style={{opacity:0.5}}/>
         </button>
 
-        {/* Galería */}
+        {/* Galería 30 días */}
         <span style={{width:1,height:14,background:'rgba(255,255,255,0.1)',margin:'0 2px'}}/>
         <button
           className="glass-btn glass-btn-neutral"
           style={{padding:'6px 12px',fontSize:12,fontWeight:500,
             letterSpacing:'-0.01em',display:'flex',alignItems:'center',gap:6,
-            color: showImageHistory ? C.image : 'rgba(96,165,250,0.65)',
-            background: showImageHistory ? 'rgba(59,130,246,0.12)' : undefined,
+            color: showGallery ? C.image : 'rgba(96,165,250,0.65)',
+            background: showGallery ? 'rgba(59,130,246,0.12)' : undefined,
           }}
-          onClick={()=>setShowImgHistory(v=>!v)}>
-          <ImageIcon style={{width:13,height:13}}/>
+          onClick={()=>setShowGallery(v=>!v)}>
+          <GalleryHorizontalEnd style={{width:13,height:13}}/>
           Galería
         </button>
 
@@ -3815,14 +4032,12 @@ export default function App() {
         </>
       )}
 
-      {/* Panel Galería de imágenes */}
-      {showImageHistory && (
-        <>
-          <ImageHistory onClose={()=>setShowImgHistory(false)} clientId={activeClient?.id||''}/>
-          <div onClick={()=>setShowImgHistory(false)}
-            style={{position:'fixed',inset:0,zIndex:190,background:'rgba(0,0,0,0.3)',backdropFilter:'blur(2px)'}}/>
-        </>
-      )}
+      {/* Panel Galería 30 días */}
+      <GalleryPanel
+        visible={showGallery}
+        onClose={()=>setShowGallery(false)}
+        onItemClick={setLightboxItem}
+      />
 
       {/* Lightbox global */}
       {lightboxItem && (
