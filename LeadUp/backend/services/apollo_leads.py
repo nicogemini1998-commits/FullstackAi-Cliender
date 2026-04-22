@@ -19,13 +19,13 @@ def _key(name: str, fallback: str = "") -> str:
     return os.environ.get(name) or os.environ.get(fallback) or ""
 
 def _is_spanish_mobile(phone: str) -> bool:
-    """Valida si teléfono es móvil español (6, 7, 9 como primer dígito)."""
+    """Valida si teléfono es móvil español (6, 7 únicamente; rechaza 8, 9)."""
     if not phone:
         return False
     clean = re.sub(r'\D', '', str(phone))
     if clean.startswith('34'):
         clean = clean[2:]
-    return len(clean) == 9 and clean[0] in ('6', '7', '9')
+    return len(clean) == 9 and clean[0] in ('6', '7')
 
 APOLLO_KEY    = lambda: _key("APOLLO_API_KEY")
 APIFY_KEY     = lambda: _key("APIFY_API_KEY")
