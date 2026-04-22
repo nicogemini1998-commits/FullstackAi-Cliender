@@ -683,32 +683,6 @@ app.post('/api/generate', async (req, res) => {
   if (auds.length) console.log(`   audURLs: ${JSON.stringify(auds)}`)
 
   try {
-    // ── Freepik — Nano Banana ────────────────────────────────────────────────────
-    if (model.startsWith('freepik/')) {
-      if (!FREEPIK_KEY) return res.status(503).json({ error: 'FREEPIK_API_KEY no configurada' })
-
-      const nanoBananaModels = {
-        'freepik/nano-banana-2': '/text-to-image/nano-banana-2',
-        'freepik/nano-banana-pro': '/text-to-image/nano-banana-pro',
-      }
-
-      if (nanoBananaModels[model]) {
-        const endpoint = nanoBananaModels[model]
-        const body = { prompt, aspect_ratio: aspectRatio || '1:1' }
-
-        const r = await fetch(`${FREEPIK_BASE}${endpoint}`, {
-          method: 'POST',
-          headers: { 'x-freepik-api-key': FREEPIK_KEY, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        const d = await r.json()
-        if (!r.ok) return res.json({ error: d.message || `Error ${model}` })
-        const taskId = d.data?.task_id
-        if (!taskId) return res.json({ error: `Sin task_id en respuesta ${model}` })
-        const modelSlug = model.replace('freepik/', '')
-        return res.json({ code: 200, data: { taskId: `nb_${modelSlug}_${taskId}` } })
-      }
-    }
 
     // Veo3 — endpoint diferente
     if (['veo3', 'veo3_fast', 'veo3_lite'].includes(model)) {
@@ -874,37 +848,6 @@ app.get('/api/task/:taskId', async (req, res) => {
       const json = await r.json()
       console.log(`KREA poll (${taskId}) →`, JSON.stringify(json).slice(0, 300))
       return res.json(json)
-    }
-
-    // Nano Banana — polling con Freepik
-    if (taskId.startsWith('nb_')) {
-      if (!FREEPIK_KEY) return res.status(503).json({ error: 'FREEPIK_API_KEY no configurada' })
-      const parts = taskId.split('_')
-      const modelSlug = parts[1]
-      const realTaskId = parts.slice(2).join('_')
-      const modelEndpoint = {
-        'nano-banana-2': '/text-to-image/nano-banana-2',
-        'nano-banana-pro': '/text-to-image/nano-banana-pro',
-      }[modelSlug]
-
-      if (!modelEndpoint) return res.json({ code: 200, data: { state: 'fail', failMsg: 'Modelo desconocido' } })
-
-      const r = await fetch(`${FREEPIK_BASE}${modelEndpoint}/${realTaskId}`, {
-        method: 'GET',
-        headers: { 'x-freepik-api-key': FREEPIK_KEY },
-      })
-      const json = await r.json()
-      console.log(`Nano Banana poll (${taskId}) →`, JSON.stringify(json).slice(0, 300))
-
-      const d = json.data || {}
-      if (d.status === 'completed' || d.state === 'success') {
-        const resultUrls = d.generated ? d.generated.map(g => g.url).filter(Boolean) : []
-        return res.json({ code: 200, data: { state: 'success', resultJson: JSON.stringify({ resultUrls }) } })
-      }
-      if (d.status === 'failed' || d.state === 'fail') {
-        return res.json({ code: 200, data: { state: 'fail', failMsg: d.error || 'Generación fallida' } })
-      }
-      return res.json({ code: 200, data: { state: 'generating', progress: d.progress || 0 } })
     }
 
     if (taskId.startsWith('veo')) {

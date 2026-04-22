@@ -95,9 +95,9 @@ const edgeTypes = { gradient: GradientEdge }
 const QTY = [1,2,4,6,8,10,12,14,16,18,20]
 
 const IMAGE_MODELS = [
-  // ── Freepik API — Nano Banana ────────────────────────────────────────────────
-  { id:'freepik/nano-banana-2', label:'Nano Banana 2', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, freepik:true, sync:false },
-  { id:'freepik/nano-banana-pro', label:'Nano Banana Pro', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, freepik:true, sync:false },
+  // ── KIE AI — Nano Banana ────────────────────────────────────────────────────
+  { id:'nano-banana-2', label:'Nano Banana 2', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, sync:false },
+  { id:'nano-banana-pro', label:'Nano Banana Pro', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, sync:false },
 ]
 
 const VIDEO_MODELS = [
@@ -1291,7 +1291,7 @@ const ImageNode = ({ id, data }) => {
             justifyContent:'center',gap:7,color:'rgba(255,255,255,0.12)'}}>
             {busy
               ? <><Loader2 style={{width:18,height:18,color:`${C.image}80`}} className="animate-spin"/>
-                  <span style={{fontSize:10.5,color:`${C.image}80`}}>Generando en {model.freepik?'Freepik':'KIE AI'}…</span></>
+                  <span style={{fontSize:10.5,color:`${C.image}80`}}>Generando en KIE AI…</span></>
               : <><ImageIcon style={{width:20,height:20,opacity:0.18}}/>
                   <span style={{fontSize:10.5}}>Tu imagen aparecerá aquí</span></>
             }
