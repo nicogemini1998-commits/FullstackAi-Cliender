@@ -3608,6 +3608,16 @@ export default function App() {
         padding:'5px 8px',
         boxShadow:'inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.15), 0 8px 40px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3)',
       }}>
+        {/* Logo */}
+        <img
+          src="/logo.png"
+          alt="FullStackAI"
+          style={{width:32,height:32,objectFit:'contain',cursor:'pointer',opacity:0.8,transition:'opacity 200ms'}}
+          onMouseEnter={e=>e.target.style.opacity='1'}
+          onMouseLeave={e=>e.target.style.opacity='0.8'}
+          title="FullStackAI — Canvas Infinito"/>
+        <span style={{width:1,height:14,background:'rgba(255,255,255,0.1)',margin:'0 2px'}}/>
+
         {[
           { label:'Nota',     type:'note',       w:240, h:180, hex:C_NOTE },
           ...(isAdmin ? [
