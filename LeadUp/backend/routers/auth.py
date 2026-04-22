@@ -56,4 +56,12 @@ async def register(body: RegisterRequest, user: dict = Depends(verify_token)):
 
 @router.get("/me")
 async def me(user: dict = Depends(verify_token)):
-    return user
+    uid = user.get("id")
+    async with db_conn() as conn:
+        row = await conn.fetchrow(
+            "SELECT id, name, email, role, lead_search_enabled FROM lu_users WHERE id=$1",
+            uid
+        )
+    if not row:
+        return user  # fallback al token si no existe
+    return dict(row)

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { Loader2, TrendingUp, ArrowRight } from 'lucide-react'
+import { Loader2, ArrowRight } from 'lucide-react'
+import logo from '../assets/logo.png'
 
 export default function Login() {
   const { login } = useAuth()
@@ -23,12 +24,8 @@ export default function Login() {
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-10">
-          <div className="w-14 h-14 rounded-2xl mb-4 flex items-center justify-center"
-            style={{background:'linear-gradient(135deg,rgba(59,130,246,0.5),rgba(29,78,216,0.35))',
-              border:'1px solid rgba(96,165,250,0.3)',
-              boxShadow:'inset 0 1px 0 rgba(255,255,255,0.2), 0 8px 32px rgba(37,99,235,0.3)'}}>
-            <TrendingUp size={24} className="text-white" />
-          </div>
+          <img src={logo} alt="LeadUp" className="w-16 h-16 rounded-2xl mb-4 object-cover"
+            style={{boxShadow:'0 8px 32px rgba(37,99,235,0.3)'}}/>
           <h1 className="text-2xl font-bold text-white tracking-tight">LeadUp</h1>
           <p className="text-sm mt-1" style={{color:'rgba(255,255,255,0.35)'}}>Panel de llamadas comerciales</p>
         </div>

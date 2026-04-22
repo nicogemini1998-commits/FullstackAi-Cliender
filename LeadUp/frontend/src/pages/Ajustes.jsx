@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth.jsx'
-import { leadsAPI as leadsApi } from '../lib/api'
-import { User, Shield, Zap, CheckCircle2 } from 'lucide-react'
+import { leadsAPI as leadsApi, admin } from '../lib/api'
+import { User, Shield, Zap, CheckCircle2, ToggleLeft, ToggleRight } from 'lucide-react'
 
 const USERS = [
   { name:'Nicolas', email:'nicolas@cliender.com', role:'admin',      pwd:'Master123' },
@@ -11,14 +11,8 @@ const USERS = [
 ]
 
 const SECTORS = [
-  'Reformas y construcción',
-  'Clínicas estética/dental',
-  'Academias y formación',
-  'Inmobiliarias',
-  'Concesionarios',
-  'Gimnasios',
-  'Seguros',
-  'Abogados / Despachos',
+  'Constructoras',
+  'Reforma',
 ]
 
 export default function Ajustes() {
@@ -26,6 +20,8 @@ export default function Ajustes() {
   const isAdmin  = user?.role === 'admin'
   const [assigning, setAssigning] = useState(false)
   const [done, setDone]           = useState('')
+  const [leadSearchEnabled, setLeadSearchEnabled] = useState(user?.lead_search_enabled !== false)
+  const [togglingSearch, setTogglingSearch] = useState(false)
 
   const assign = async () => {
     setAssigning(true); setDone('')
@@ -34,6 +30,18 @@ export default function Ajustes() {
       setDone('Leads asignados correctamente')
     } catch { setDone('Error al asignar') }
     finally { setAssigning(false) }
+  }
+
+  const toggleLeadSearch = async (newValue) => {
+    setTogglingSearch(true)
+    try {
+      await admin.toggleLeadSearch(newValue)
+      setLeadSearchEnabled(newValue)
+    } catch (e) {
+      console.error('Error al cambiar búsqueda de leads:', e)
+    } finally {
+      setTogglingSearch(false)
+    }
   }
 
   return (
@@ -64,6 +72,30 @@ export default function Ajustes() {
               <span className="text-sm font-medium text-white">{val}</span>
             </div>
           ))}
+        </div>
+
+        {/* Búsqueda de leads */}
+        <div className="rounded-2xl p-5" style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)'}}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {leadSearchEnabled ? <ToggleRight size={14} style={{color:'#10b981'}}/> : <ToggleLeft size={14} style={{color:'#6b7280'}}/>}
+              <p className="font-mono text-xs font-bold tracking-widest" style={{color:'rgba(255,255,255,0.5)'}}>BÚSQUEDA DE LEADS</p>
+            </div>
+            <button onClick={() => toggleLeadSearch(!leadSearchEnabled)} disabled={togglingSearch}
+              className="px-3 py-1.5 rounded-lg font-mono text-xs font-semibold transition-all"
+              style={{
+                background: leadSearchEnabled ? 'rgba(16,185,129,0.12)' : 'rgba(107,114,128,0.12)',
+                color: leadSearchEnabled ? '#34d399' : '#9ca3af',
+                border: `1px solid ${leadSearchEnabled ? 'rgba(16,185,129,0.3)' : 'rgba(107,114,128,0.3)'}`,
+                cursor: togglingSearch ? 'not-allowed' : 'pointer',
+                opacity: togglingSearch ? 0.6 : 1
+              }}>
+              {togglingSearch ? 'Actualizando...' : (leadSearchEnabled ? 'ACTIVO' : 'INACTIVO')}
+            </button>
+          </div>
+          <p className="text-xs mt-2" style={{color:'rgba(255,255,255,0.4)'}}>
+            {leadSearchEnabled ? 'Recibirás leads automáticamente cada día a las 08:00.' : 'No recibirás nuevos leads hasta que lo actives.'}
+          </p>
         </div>
 
         {/* Admin: usuarios */}

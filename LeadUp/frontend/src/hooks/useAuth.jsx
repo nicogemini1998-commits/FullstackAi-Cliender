@@ -16,14 +16,14 @@ export function AuthProvider({ children }) {
       auth.login(email, password)
         .then(r => {
           localStorage.setItem('lu_token', r.data.token)
-          setUser({ email: r.data.email || email, name: r.data.name, role: r.data.role })
+          setUser({ email: r.data.email || email, name: r.data.name, role: r.data.role, lead_search_enabled: true })
           setLoading(false)
         })
         .catch(() => setLoading(false))
       return
     }
     auth.me()
-      .then(r => setUser(r.data))
+      .then(r => setUser({ ...r.data, lead_search_enabled: r.data.lead_search_enabled !== false }))
       .catch(() => localStorage.removeItem('lu_token'))
       .finally(() => setLoading(false))
   }, [])

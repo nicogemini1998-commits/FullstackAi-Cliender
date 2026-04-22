@@ -47,6 +47,8 @@ export const admin = {
   triggerEnrichment: (sector, city, qty) =>
     http.post('/admin/trigger-enrichment', { sector, city, qty }),
   analytics: (days) => http.get(`/admin/analytics?days=${days}`),
+  toggleLeadSearch: (enabled) =>
+    http.patch('/admin/lead-search-toggle', { enabled }),
 }
 
 export { http as default }

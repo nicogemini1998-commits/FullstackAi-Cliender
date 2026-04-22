@@ -1,8 +1,8 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from datetime import date, timedelta
-from ..auth import require_admin
+from ..auth import require_admin, verify_token
 from ..services.enrichment import run_enrichment
 from ..services.scheduler import trigger_daily_assignment
 from ..database import db_conn
@@ -17,6 +17,10 @@ class EnrichmentRequest(BaseModel):
     qty: int = 10
 
 
+class LeadSearchToggleRequest(BaseModel):
+    enabled: bool
+
+
 @router.post("/trigger-enrichment")
 async def trigger_enrichment(body: EnrichmentRequest, user: dict = Depends(require_admin)):
     s = get_settings()
@@ -26,6 +30,18 @@ async def trigger_enrichment(body: EnrichmentRequest, user: dict = Depends(requi
         qty=body.qty,
     )
     return result
+
+
+@router.patch("/lead-search-toggle")
+async def toggle_lead_search(body: LeadSearchToggleRequest, user: dict = Depends(verify_token)):
+    """Activa/desactiva búsqueda de leads para el usuario actual."""
+    uid = user.get("id")
+    async with db_conn() as conn:
+        await conn.execute(
+            "UPDATE lu_users SET lead_search_enabled=$1 WHERE id=$2",
+            body.enabled, uid
+        )
+    return {"ok": True, "lead_search_enabled": body.enabled}
 
 
 @router.get("/analytics")

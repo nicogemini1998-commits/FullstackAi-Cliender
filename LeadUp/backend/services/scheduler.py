@@ -19,7 +19,7 @@ MAX_RETRIES      = 3
 async def _get_active_commercials() -> list[dict]:
     async with db_conn() as conn:
         rows = await conn.fetch(
-            "SELECT id, name, email FROM lu_users WHERE active=TRUE ORDER BY role, name"
+            "SELECT id, name, email FROM lu_users WHERE active=TRUE AND lead_search_enabled=TRUE ORDER BY role, name"
         )
     return [dict(r) for r in rows]
 
@@ -225,3 +225,9 @@ def start_scheduler():
     )
     _scheduler.start()
     print("⏰ Scheduler activo — asignación 08:00 · limpieza 02:00 (retención 10 días)")
+
+
+def stop_scheduler():
+    global _scheduler
+    if _scheduler and _scheduler.running:
+        _scheduler.shutdown(wait=False)

@@ -18,6 +18,15 @@ from ..database import db_conn
 def _key(name: str, fallback: str = "") -> str:
     return os.environ.get(name) or os.environ.get(fallback) or ""
 
+def _is_spanish_mobile(phone: str) -> bool:
+    """Valida si teléfono es móvil español (6, 7, 9 como primer dígito)."""
+    if not phone:
+        return False
+    clean = re.sub(r'\D', '', str(phone))
+    if clean.startswith('34'):
+        clean = clean[2:]
+    return len(clean) == 9 and clean[0] in ('6', '7', '9')
+
 APOLLO_KEY    = lambda: _key("APOLLO_API_KEY")
 APIFY_KEY     = lambda: _key("APIFY_API_KEY")
 ANTHROPIC_KEY = lambda: _key("ANTHROPIC_API_KEY", "ANTHROPIC_FALLBACK")
@@ -28,10 +37,8 @@ APIFY_ACTOR = "compass~crawler-google-places"
 
 # ── Sectores CLIENDER ─────────────────────────────────────────────────────────
 CLIENDER_SECTORS = [
-    {"tag":"reformas",       "cities":["Madrid","Valencia","Barcelona","Sevilla","Bilbao","Zaragoza"]},
-    {"tag":"academias",      "cities":["Madrid","Valencia","Barcelona","Zaragoza","Sevilla"]},
-    {"tag":"inmobiliarias",  "cities":["Madrid","Valencia","Barcelona","Málaga","Alicante","Sevilla"]},
-    {"tag":"abogados",       "cities":["Madrid","Valencia","Barcelona","Sevilla","Bilbao","Málaga"]},
+    {"tag":"constructoras",  "cities":["Madrid","Valencia","Barcelona","Sevilla","Bilbao","Zaragoza","Málaga","Alicante"]},
+    {"tag":"reforma",        "cities":["Madrid","Valencia","Barcelona","Sevilla","Bilbao","Zaragoza","Málaga","Alicante"]},
 ]
 
 _NO_COMPETITORS = [
@@ -392,13 +399,13 @@ async def fetch_leads_for_user(sector_tag: str, city: str, qty: int = 15, page: 
     if not matches:
         return []
 
-    # 2. Construir leads base — SOLO con teléfono
+    # 2. Construir leads base — SOLO con móvil español verificado
     base = []
     for m in matches:
         if not m: continue
         org   = m.get("organization") or {}
         phone = org.get("phone","")
-        if not phone: continue  # SIN TELÉFONO = DESCARTADO
+        if not phone or not _is_spanish_mobile(phone): continue  # SOLO MÓVIL
         empresa = (m.get("organization_name") or org.get("name","")).strip()
         if not empresa: continue
         combined = f"{empresa} {org.get('industry','')}".lower()

@@ -12,6 +12,7 @@ import Pipeline  from './Pipeline.jsx'
 import Analytics from './Analytics.jsx'
 import Ajustes   from './Ajustes.jsx'
 import Notas     from './Notas.jsx'
+import logo from '../assets/logo.png'
 
 /* ─── helpers ─────────────────────────────────────────── */
 const parseContacts = (raw) => {
@@ -721,14 +722,9 @@ export default function Dashboard() {
 
         {/* Logo */}
         <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-          <div style={{width:28,height:28,borderRadius:7,
-            background:'linear-gradient(135deg,rgba(59,130,246,.6),rgba(29,78,216,.4))',
-            border:'1px solid rgba(96,165,250,.35)',
-            display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <Phone size={12} color="#fff"/>
-          </div>
+          <img src={logo} alt="LeadUp" style={{width:32,height:32,borderRadius:6,objectFit:'cover'}}/>
           <span style={{fontWeight:800,fontSize:13,letterSpacing:'0.05em'}}>
-            <span style={{color:'#3b82f6'}}>LEAD</span><span style={{color:'#fff'}}>UP</span>
+            <span style={{color:'#a78bfa'}}>LEAD</span><span style={{color:'#fff'}}>UP</span>
           </span>
         </div>
 

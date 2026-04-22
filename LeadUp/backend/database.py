@@ -114,6 +114,8 @@ ALTER TABLE lu_companies ADD COLUMN IF NOT EXISTS next_attempt_date DATE;
 ALTER TABLE lu_companies ADD COLUMN IF NOT EXISTS source           VARCHAR(20) DEFAULT 'apify';
 ALTER TABLE lu_companies ADD COLUMN IF NOT EXISTS sector_tag       VARCHAR(50);
 
+ALTER TABLE lu_users ADD COLUMN IF NOT EXISTS lead_search_enabled BOOLEAN DEFAULT TRUE;
+
 CREATE TABLE IF NOT EXISTS lu_daily_assignments (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id       UUID REFERENCES lu_users(id) ON DELETE CASCADE,
