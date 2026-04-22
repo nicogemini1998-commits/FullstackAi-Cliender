@@ -96,9 +96,15 @@ const QTY = [1,2,4,6,8,10,12,14,16,18,20]
 
 const IMAGE_MODELS = [
   // ── Freepik API ─────────────────────────────────────────────────────────────
-  { id:'freepik/text-to-image', label:'Freepik Standard',  ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, freepik:true, sync:true,
+  { id:'freepik/text-to-image', label:'Freepik Classic', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, freepik:true, sync:true,
     styles:['photo','digital-art','illustration','3d','painting','anime','pixel-art','watercolor','sketch','low-poly'] },
-  { id:'freepik/mystic',        label:'Freepik Mystic',    ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3','21:9','9:21'], res:[], imgInput:true, maxImg:1, freepik:true, sync:false },
+  { id:'freepik/mystic', label:'Freepik Mystic', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3','21:9','9:21'], res:[], imgInput:true, maxImg:1, freepik:true, sync:false },
+  { id:'freepik/flux-kontext-pro', label:'Flux Kontext Pro', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:true, maxImg:1, freepik:true, sync:false },
+  { id:'freepik/flux-2-klein', label:'Flux 2 Klein', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:true, maxImg:4, freepik:true, sync:false },
+  { id:'freepik/flux-2-turbo', label:'Flux 2 Turbo', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, freepik:true, sync:false },
+  { id:'freepik/flux-dev', label:'Flux Dev', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, freepik:true, sync:false },
+  { id:'freepik/seedream-v4-5', label:'Seedream 4.5', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, freepik:true, sync:false },
+  { id:'freepik/imagen3', label:'Imagen 3', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, freepik:true, sync:false },
 ]
 
 const VIDEO_MODELS = [

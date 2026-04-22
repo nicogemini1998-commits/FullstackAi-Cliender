@@ -743,6 +743,52 @@ app.post('/api/generate', async (req, res) => {
         if (!taskId) return res.json({ error: 'Sin task_id en respuesta Freepik' })
         return res.json({ code: 200, data: { taskId: `fk_${taskId}` } })
       }
+
+      // ── Flux & Seedream async modelos ──────────────────────────────────────
+      const fluxAsyncModels = {
+        'freepik/flux-kontext-pro': '/text-to-image/flux-kontext-pro',
+        'freepik/flux-2-klein': '/text-to-image/flux-2-klein',
+        'freepik/flux-2-turbo': '/text-to-image/flux-2-turbo',
+        'freepik/flux-dev': '/text-to-image/flux-dev',
+        'freepik/seedream-v4-5': '/text-to-image/seedream-v4-5',
+        'freepik/imagen3': '/text-to-image/imagen3',
+      }
+
+      if (fluxAsyncModels[model]) {
+        // Modelos async Flux y Seedream
+        const endpoint = fluxAsyncModels[model]
+        const body = { prompt, aspect_ratio: aspectRatio || '1:1' }
+
+        if (model === 'freepik/flux-kontext-pro' && imgs.length) {
+          body.input_image = imgs[0]
+          body.guidance = 3.0
+          body.steps = 50
+        }
+        if (model === 'freepik/flux-2-klein' && imgs.length) {
+          body.input_image = imgs[0]
+        }
+        if (model === 'freepik/flux-2-turbo') {
+          body.guidance_scale = 2.5
+        }
+        if (model === 'freepik/flux-dev') {
+          body.styling = { effects: [] }
+        }
+        if (model === 'freepik/seedream-v4-5') {
+          body.guidance_scale = 2.5
+        }
+
+        const r = await fetch(`${FREEPIK_BASE}${endpoint}`, {
+          method: 'POST',
+          headers: { 'x-freepik-api-key': FREEPIK_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const d = await r.json()
+        if (!r.ok) return res.json({ error: d.message || `Error ${model}` })
+        const taskId = d.data?.task_id
+        if (!taskId) return res.json({ error: `Sin task_id en respuesta ${model}` })
+        const modelSlug = model.replace('freepik/', '')
+        return res.json({ code: 200, data: { taskId: `fk2_${modelSlug}_${taskId}` } })
+      }
     }
 
     // Veo3 — endpoint diferente
@@ -853,6 +899,43 @@ app.get('/api/task/:taskId', async (req, res) => {
       }
       if (status === 'FAILED') {
         return res.json({ code: 200, data: { state: 'fail', failMsg: 'Freepik Mystic falló' } })
+      }
+      return res.json({ code: 200, data: { state: 'generating', progress: 0 } })
+    }
+
+    // Freepik Flux & Seedream — polling con prefijo fk2_
+    if (taskId.startsWith('fk2_')) {
+      if (!FREEPIK_KEY) return res.status(503).json({ error: 'FREEPIK_API_KEY no configurada' })
+      // Parse fk2_<modelSlug>_<taskId>
+      const parts = taskId.slice(4).split('_')
+      const realId = parts.pop()
+      const modelSlug = parts.join('_')
+      const endpointMap = {
+        'flux-kontext-pro': '/text-to-image/flux-kontext-pro',
+        'flux-2-klein': '/text-to-image/flux-2-klein',
+        'flux-2-turbo': '/text-to-image/flux-2-turbo',
+        'flux-dev': '/text-to-image/flux-dev',
+        'seedream-v4-5': '/text-to-image/seedream-v4-5',
+        'imagen3': '/text-to-image/imagen3',
+      }
+      const endpoint = endpointMap[modelSlug]
+      if (!endpoint) {
+        return res.json({ code: 400, data: { state: 'fail', failMsg: `Modelo Freepik desconocido: ${modelSlug}` } })
+      }
+
+      const r = await fetch(`${FREEPIK_BASE}${endpoint}/${realId}`, {
+        headers: { 'x-freepik-api-key': FREEPIK_KEY },
+      })
+      const d = await r.json()
+      console.log(`Freepik ${modelSlug} poll (${realId}) → status:${d.data?.status}`)
+      const status = d.data?.status
+      const generated = d.data?.generated || []
+      if (status === 'COMPLETED' && generated.length) {
+        const url = generated[0].url
+        return res.json({ code: 200, data: { state: 'success', resultJson: JSON.stringify({ resultUrls: [url] }) } })
+      }
+      if (status === 'FAILED') {
+        return res.json({ code: 200, data: { state: 'fail', failMsg: `Freepik ${modelSlug} falló` } })
       }
       return res.json({ code: 200, data: { state: 'generating', progress: 0 } })
     }

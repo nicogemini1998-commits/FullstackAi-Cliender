@@ -234,3 +234,16 @@ body::before {
   color: rgba(255,255,255,0.85) !important;
 }
 .react-flow__controls-button svg { fill: currentColor !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NODE SELECTION — Borderless, Clean
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.react-flow__node.selected,
+.react-flow__node:focus,
+.react-flow__node:focus-visible {
+  outline: none !important;
+}
+.react-flow__node.selected > div {
+  outline: none !important;
+}
