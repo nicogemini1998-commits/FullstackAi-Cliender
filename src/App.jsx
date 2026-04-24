@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Component } from 'react'
 import {
   ReactFlow, Background, Controls, MiniMap,
   useNodesState, useEdgesState, addEdge,
@@ -14,6 +14,7 @@ import {
   LayoutTemplate, Trash2, Save, FolderOpen, Check,
   ChevronRight, Palette, Pencil, Play, Shuffle, FolderPlus, StickyNote,
   Bot, Send, RefreshCw, Sparkles, GalleryHorizontalEnd, Coins, BarChart3,
+  Globe, ExternalLink, Zap,
 } from 'lucide-react'
 
 const SERVER = import.meta.env.PROD ? '' : 'http://localhost:3001'
@@ -109,6 +110,44 @@ const VIDEO_MODELS = [
   { id:'wan/2-7-text-to-video',  label:'WAN 2.7',     ar:['16:9','9:16','1:1','4:3','3:4','4:5'], dur:['5','10','15'] },
   { id:'sora-2-text-to-video',   label:'Sora-2',      ar:['16:9','9:16','4:5'],                    dur:['10'] },
 ]
+
+// Costos por segundo según modelo, resolución y si hay video de referencia
+const VIDEO_COST_MAP = {
+  'bytedance/seedance-2': {
+    '1080p': { withVideo: 0.31, noVideo: 0.51 },
+    '720p':  { withVideo: 0.125, noVideo: 0.205 },
+    '480p':  { withVideo: 0.095, noVideo: 0.095 },
+  },
+  'bytedance/seedance-2-fast': {
+    '720p':  { withVideo: 0.10, noVideo: 0.165 },
+    '480p':  { withVideo: 0.045, noVideo: 0.0775 },
+  },
+  'kling-2.6/text-to-video': {
+    '1080p': { withVideo: 0.065, noVideo: 0.065 },
+    '720p':  { withVideo: 0.065, noVideo: 0.065 },
+    '480p':  { withVideo: 0.065, noVideo: 0.065 },
+  },
+}
+
+// Función para calcular el costo correcto del video
+const calcVideoCost = (modelId, resolution = '720p', duration = 5, hasVideoRef = false) => {
+  const costMap = VIDEO_COST_MAP[modelId]
+  if (!costMap) {
+    // Fallback para modelos no especificados
+    const fallbacks = {
+      'veo3_fast': 0.050,
+      'veo3': 0.250,
+      'wan/2-7-text-to-video': 0.015,
+      'sora-2-text-to-video': 0.015,
+    }
+    return (fallbacks[modelId] || 0.030) * duration
+  }
+
+  const res = resolution || '720p'
+  const costs = costMap[res] || costMap['720p']
+  const costPerSec = hasVideoRef ? costs.withVideo : costs.noVideo
+  return costPerSec * duration
+}
 
 const MODEL_COSTS = {
   'nano-banana-2':            0.025,
@@ -1044,12 +1083,12 @@ const ImageNode = ({ id, data }) => {
 
   // Cuando se selecciona un estilo, sus imágenes se usan como imgIn
   useEffect(()=>{
-    if (!selectedStyleId) { if(model.imgInput) return; setImgIn([]); return }
+    if (!selectedStyleId) { if(model?.imgInput) return; setImgIn([]); return }
     const style = nodeStyles.find(s=>s.id===selectedStyleId)
     setImgIn(style?.images||[])
   },[selectedStyleId, nodeStyles])
 
-  useEffect(()=>{ setAr(model.ar[0]); setRes(model.res[0]||'1K'); setImgIn([]); setSingleUrl(null); setErr(null) },[mIdx])
+  useEffect(()=>{ if(!model) return; setAr(model.ar[0]); setRes(model.res[0]||'1K'); setImgIn([]); setSingleUrl(null); setErr(null) },[mIdx])
 
   // Reaccionar a prompt / autoTrigger entrante desde terminal
   useEffect(()=>{
@@ -1069,6 +1108,7 @@ const ImageNode = ({ id, data }) => {
   },[data.incomingPrompt, data.autoTrigger])
 
   const handleGenerateWithBatch = async (batchPrompts, overridePrompt) => {
+    if (!model) { setErr('Modelo no seleccionado'); return }
     const basePrompt = overridePrompt || prompt
     const prompts = batchPrompts?.length ? batchPrompts : (basePrompt ? [basePrompt] : [])
     if (!prompts[0]?.trim()||busy) return
@@ -1087,14 +1127,16 @@ const ImageNode = ({ id, data }) => {
       const cell = 130, gap = 6, pad = 20, hdr = 38, pb = 6
       const gW   = cols * cell + (cols - 1) * gap + pad
       const gH   = hdr + rows * cell + (rows - 1) * gap + pad + pb
-      galleryId  = `gallery-${Date.now()}`
+      galleryId  = `gallery-${Date.now()}-${Math.random().toString(36).substr(2,9)}`
       addNodes({ id: galleryId, type: 'galleryNode',
         position: { x: pos.x + pw + 60, y: pos.y + ph/2 - gH/2 },
         style: { width: gW, height: gH },
         data: { images: [], total: effectiveQty, modelLabel: model.label },
       })
-      // Edge ImageNode → GalleryNode
-      addEdges({ id: `e-${id}-${galleryId}`, source: id, target: galleryId, type: 'gradient' })
+      // Edge ImageNode → GalleryNode (diferir para evitar race condition)
+      setTimeout(() => {
+        addEdges({ id: `e-${id}-${galleryId}`, source: id, target: galleryId, type: 'gradient' })
+      }, 50)
     }
 
     let completed = 0
@@ -1120,13 +1162,16 @@ const ImageNode = ({ id, data }) => {
       if (effectiveQty === 1) {
         setSingleUrl(url)
         // Crear ResultImageNode conectado al ImageNode
-        const rid = `result-${Date.now()}`
+        const rid = `result-${Date.now()}-${Math.random().toString(36).substr(2,9)}`
         addNodes({ id: rid, type: 'resultImage',
           position: { x: pos.x + pw + 60, y: pos.y },
           style: { width: 200, height: 200 },
           data: { url, prompt },
         })
-        addEdges({ id: `e-${id}-${rid}`, source: id, target: rid, type: 'gradient' })
+        // Diferir arista para evitar race condition
+        setTimeout(() => {
+          addEdges({ id: `e-${id}-${rid}`, source: id, target: rid, type: 'gradient' })
+        }, 50)
         if (completed >= effectiveQty) setBusy(false)
       } else {
         setNodes(nds => nds.map(n => n.id === galleryId
@@ -1252,6 +1297,14 @@ const ImageNode = ({ id, data }) => {
         color:'rgba(255,255,255,0.55)',transition:`all 150ms ${SPRING}`, ...sx}}>
       {children}
     </button>
+  )
+
+  if (!model) return (
+    <Shell hex={C.image} minW={280} minH={380} handles={handles}>
+      <div style={{padding:20,color:'rgba(255,255,255,0.4)',textAlign:'center',fontSize:12}}>
+        Cargando modelo…
+      </div>
+    </Shell>
   )
 
   return (
@@ -1563,7 +1616,7 @@ const VideoNode = ({ id, data }) => {
   const [openScenarios, setOpenScenarios] = useState(false)
   const poll = usePoll(5000)
   const m = VIDEO_MODELS[mIdx]
-  useEffect(()=>{ setAr(m.ar[0]); setDur(m.dur[0]||'5'); setKf([]); setRv([]); setRa([]); setVideoUrl(null); setErr(null) },[mIdx])
+  useEffect(()=>{ if(!m) return; setAr(m.ar[0]); setDur(m.dur[0]||'5'); setKf([]); setRv([]); setRa([]); setVideoUrl(null); setErr(null) },[mIdx])
 
   // Auto-trigger desde agente o terminal
   useEffect(()=>{
@@ -1580,6 +1633,7 @@ const VideoNode = ({ id, data }) => {
 
   // Función de generación — captura el state actual en el momento del click
   const generate = async () => {
+    if (!m) { setErr('Modelo no seleccionado'); return }
     if (!prompt.trim() || busy) return
     setBusy(true); setErr(null); setVideoUrl(null); setProg(0)
     const thisNode = getNode(id)
@@ -1597,7 +1651,8 @@ const VideoNode = ({ id, data }) => {
       const json = await r.json()
       const taskId = json.data?.taskId || json.taskId
       if (!taskId) throw new Error(json.msg || json.error || `Error ${r.status}`)
-      const videoCost = (MODEL_COSTS[m.id] || 0) * parseFloat(dur)
+      const hasVideoRef = rv.length > 0
+      const videoCost = calcVideoCost(m.id, res, parseFloat(dur), hasVideoRef)
       poll(
         taskId,
         url => {
@@ -1612,13 +1667,15 @@ const VideoNode = ({ id, data }) => {
               body: JSON.stringify({ url, prompt, model: m.id, aspect_ratio: ar, duration: parseInt(dur), cost_usd: videoCost, client_id: clientId }),
             }).catch(() => {})
           }
-          const rvid = `resvid-${Date.now()}`
+          const rvid = `resvid-${Date.now()}-${Math.random().toString(36).substr(2,9)}`
           addNodes({ id:rvid, type:'resultVideo',
             position:{ x:pos.x+pw+60, y:pos.y },
             style:{ width:320, height:240 },
             data:{ url, prompt, modelLabel:m.label }
           })
-          addEdges({ id:`e-${id}-${rvid}`, source:id, target:rvid, type:'gradient' })
+          setTimeout(() => {
+            addEdges({ id:`e-${id}-${rvid}`, source:id, target:rvid, type:'gradient' })
+          }, 50)
         },
         msg=>{ setErr(msg); setBusy(false) },
         p=>setProg(p)
@@ -1630,6 +1687,14 @@ const VideoNode = ({ id, data }) => {
     <Handle type="target" position={Position.Left}  style={mkHandle('left',  C.video,'video')}/>
     <Handle type="source" position={Position.Right} style={mkHandle('right', C.video,'video')}/>
   </>
+
+  if (!m) return (
+    <Shell hex={C.video} minW={300} minH={380} handles={vidHandles}>
+      <div style={{padding:20,color:'rgba(255,255,255,0.4)',textAlign:'center',fontSize:12}}>
+        Cargando modelo…
+      </div>
+    </Shell>
+  )
 
   return (
     <Shell hex={C.video} minW={300} minH={380} handles={vidHandles}>
@@ -1787,7 +1852,23 @@ const VideoNode = ({ id, data }) => {
             <NRow dot="rgba(255,255,255,0.25)" label="Audio sincronizado"><Tog val={genAudio} set={setGenAudio}/></NRow>
             <NRow dot="rgba(255,255,255,0.25)" label="Retornar último fotograma"><Tog val={retLast} set={setRetLast}/></NRow>
             <NRow dot="rgba(255,255,255,0.25)" label="Búsqueda en línea"><Tog val={webSearch} set={setWebSearch}/></NRow>
-            <NRow dot="rgba(255,255,255,0.25)" label="Verificar contenido" last><Tog val={nsfw} set={setNsfw}/></NRow>
+            <NRow dot="rgba(255,255,255,0.25)" label="Verificar contenido"><Tog val={nsfw} set={setNsfw}/></NRow>
+            {/* Costo estimado */}
+            <div style={{padding:'8px 14px',borderBottom:'1px solid rgba(255,255,255,0.04)',borderTop:'1px solid rgba(255,255,255,0.04)'}}>
+              <span style={{fontSize:10,color:'rgba(255,255,255,0.35)',display:'block',marginBottom:8}}>Costo estimado</span>
+              <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(167,139,250,0.08)',
+                border:'1px solid rgba(167,139,250,0.2)',borderRadius:8,padding:'8px 10px'}}>
+                <Coins style={{width:12,height:12,color:'rgba(167,139,250,0.6)',flexShrink:0}}/>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,color:'white',fontWeight:600}}>
+                    ${calcVideoCost(m.id, res, parseFloat(dur), rv.length > 0).toFixed(3)}
+                  </div>
+                  <div style={{fontSize:8,color:'rgba(255,255,255,0.4)',marginTop:1}}>
+                    {res} · {dur}s {rv.length > 0 ? '· con video' : '· sin video'}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1803,16 +1884,25 @@ const AnalyticsPanel = ({ visible, onClose }) => {
 
   useEffect(() => {
     if (!visible) return
-    setLoading(true)
     const token = localStorage.getItem('fai_token')
-    if (!token) { setLoading(false); return }
+    if (!token) return
     const clientId = getActiveClient()?.id || ''
-    fetch(`${SERVER}/api/analytics?client_id=${clientId}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false) })
-      .catch(() => { setLoading(false) })
+
+    const fetchAnalytics = () => {
+      fetch(`${SERVER}/api/analytics?client_id=${clientId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(r => r.json())
+        .then(d => { setData(d); setLoading(false) })
+        .catch(() => {})
+    }
+
+    setLoading(true)
+    fetchAnalytics()
+
+    // Polling cada 10 segundos mientras el panel está abierto
+    const interval = setInterval(fetchAnalytics, 10000)
+    return () => clearInterval(interval)
   }, [visible])
 
   return (
@@ -1853,8 +1943,8 @@ const AnalyticsPanel = ({ visible, onClose }) => {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'all 150ms ease',
             }}
-            onMouseEnter={e => {e.target.style.background='rgba(255,255,255,0.12)'; e.target.style.color='rgba(255,255,255,0.8)'}}
-            onMouseLeave={e => {e.target.style.background='rgba(255,255,255,0.06)'; e.target.style.color='rgba(255,255,255,0.5)'}}>
+            onMouseEnter={e => {e.currentTarget.style.background='rgba(255,255,255,0.12)'; e.currentTarget.style.color='rgba(255,255,255,0.8)'}}
+            onMouseLeave={e => {e.currentTarget.style.background='rgba(255,255,255,0.06)'; e.currentTarget.style.color='rgba(255,255,255,0.5)'}}>
             <X style={{width:12,height:12}}/>
           </button>
         </div>
@@ -2040,8 +2130,8 @@ const GalleryPanel = ({ visible, onClose, onItemClick }) => {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'all 150ms ease',
             }}
-            onMouseEnter={e => {e.target.style.background='rgba(255,255,255,0.12)'; e.target.style.color='rgba(255,255,255,0.8)'}}
-            onMouseLeave={e => {e.target.style.background='rgba(255,255,255,0.06)'; e.target.style.color='rgba(255,255,255,0.5)'}}>
+            onMouseEnter={e => {e.currentTarget.style.background='rgba(255,255,255,0.12)'; e.currentTarget.style.color='rgba(255,255,255,0.8)'}}
+            onMouseLeave={e => {e.currentTarget.style.background='rgba(255,255,255,0.06)'; e.currentTarget.style.color='rgba(255,255,255,0.5)'}}>
             <X style={{width:12,height:12}}/>
           </button>
         </div>
@@ -2925,6 +3015,101 @@ const PromptListNode = ({ id, data }) => {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ── LandingProNode — satélite herramienta generador de landing pages
+// ══════════════════════════════════════════════════════════════════════════════
+const C_LANDING = '#a78bfa'
+const LANDINGPRO_URL = 'http://localhost:3004'
+
+const LandingProNode = ({ id }) => {
+  const { setNodes } = useReactFlow()
+  const [status, setStatus] = useState('checking')
+
+  useEffect(() => {
+    fetch(`${LANDINGPRO_URL}/api/health`)
+      .then(r => r.ok ? setStatus('online') : setStatus('offline'))
+      .catch(() => setStatus('offline'))
+  }, [])
+
+  const handleClose = () => setNodes(ns => ns.filter(n => n.id !== id))
+
+  return (
+    <Shell color={C_LANDING} w={300} h={220}>
+      <Head color={C_LANDING} icon={<Globe style={{width:14,height:14}}/>} label="LandingPro" onClose={handleClose}/>
+      <div style={{padding:'16px',display:'flex',flexDirection:'column',gap:12,height:'calc(100% - 44px)'}}>
+
+        {/* Branding */}
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div style={{
+            width:40,height:40,borderRadius:10,flexShrink:0,
+            background:'linear-gradient(135deg,rgba(99,102,241,0.3),rgba(167,139,250,0.3))',
+            border:'1px solid rgba(167,139,250,0.25)',
+            display:'flex',alignItems:'center',justifyContent:'center',
+          }}>
+            <Zap style={{width:18,height:18,color:'#a78bfa'}}/>
+          </div>
+          <div>
+            <div style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,0.9)',letterSpacing:'-0.02em'}}>LandingPro</div>
+            <div style={{fontSize:11,color:'rgba(255,255,255,0.35)',marginTop:1}}>Generador de landing pages IA</div>
+          </div>
+          <div style={{
+            marginLeft:'auto',fontSize:10,fontWeight:500,padding:'3px 8px',borderRadius:999,
+            background: status==='online' ? 'rgba(74,222,128,0.1)' : status==='checking' ? 'rgba(250,204,21,0.1)' : 'rgba(239,68,68,0.1)',
+            color: status==='online' ? '#4ade80' : status==='checking' ? '#facc15' : '#f87171',
+            border: `1px solid ${status==='online' ? 'rgba(74,222,128,0.2)' : status==='checking' ? 'rgba(250,204,21,0.2)' : 'rgba(239,68,68,0.2)'}`,
+          }}>
+            {status === 'online' ? '● online' : status === 'checking' ? '○ …' : '● offline'}
+          </div>
+        </div>
+
+        {/* Features */}
+        <div style={{display:'flex',flexDirection:'column',gap:5}}>
+          {['GSAP + Lenis · animaciones premium','Three.js · fondos 3D interactivos','KIE AI · imágenes generadas por IA','SEO/SEM · copy optimizado'].map(f => (
+            <div key={f} style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'rgba(255,255,255,0.35)'}}>
+              <div style={{width:3,height:3,borderRadius:'50%',background:'rgba(167,139,250,0.5)',flexShrink:0}}/>
+              {f}
+            </div>
+          ))}
+        </div>
+
+        {/* Actions */}
+        <div style={{display:'flex',gap:8,marginTop:'auto'}}>
+          <button
+            onClick={() => window.open(LANDINGPRO_URL, '_blank')}
+            style={{
+              flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:6,
+              padding:'8px',borderRadius:8,border:'none',cursor:'pointer',fontSize:12,fontWeight:500,
+              background: status==='online' ? 'rgba(167,139,250,0.15)' : 'rgba(255,255,255,0.04)',
+              color: status==='online' ? '#a78bfa' : 'rgba(255,255,255,0.25)',
+              transition:'all 200ms',
+            }}
+            onMouseEnter={e => { if(status==='online') e.currentTarget.style.background='rgba(167,139,250,0.22)' }}
+            onMouseLeave={e => { if(status==='online') e.currentTarget.style.background='rgba(167,139,250,0.15)' }}
+          >
+            <ExternalLink style={{width:12,height:12}}/>
+            Abrir herramienta
+          </button>
+          <button
+            onClick={() => {
+              setStatus('checking')
+              fetch(`${LANDINGPRO_URL}/api/health`)
+                .then(r => r.ok ? setStatus('online') : setStatus('offline'))
+                .catch(() => setStatus('offline'))
+            }}
+            title="Verificar estado"
+            style={{
+              padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,0.07)',
+              background:'rgba(255,255,255,0.03)',cursor:'pointer',color:'rgba(255,255,255,0.3)',
+            }}
+          >
+            <RefreshCw style={{width:12,height:12}}/>
+          </button>
+        </div>
+      </div>
+    </Shell>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // ── NoteNode — post-it de texto libre
 // ══════════════════════════════════════════════════════════════════════════════
 const C_NOTE = '#fde047'
@@ -3252,6 +3437,7 @@ const nodeTypes = {
   galleryNode: GalleryNode,
   note:        NoteNode,
   promptList:  PromptListNode,
+  landingPro:  LandingProNode,
 }
 
 const edgeOpts = { type:'gradient' }
@@ -3789,7 +3975,7 @@ function ImageHistory({ onClose, clientId = '' }) {
   )
 }
 
-export default function App() {
+function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [authUser, setAuthUser] = useState(() => {
@@ -3806,6 +3992,7 @@ export default function App() {
   const [showGallery, setShowGallery]       = useState(false)
   const [showAnalytics, setShowAnalytics]   = useState(false)
   const [showClients, setShowClients]       = useState(false)
+  const [costToday, setCostToday]           = useState(0)
   const [activeClient, setActiveClientState] = useState(() => getActiveClient())
   const [globalStyleId, setGlobalStyleId] = useState(null)
   const [clearConfirm, setClearConfirm]   = useState(false)
@@ -3938,6 +4125,26 @@ export default function App() {
       })
       .catch(() => { /* error de red — mantener sesión */ })
   }, [])
+
+  // Polling global de costos cada 10 segundos — actualización en tiempo real
+  useEffect(() => {
+    const token = localStorage.getItem('fai_token')
+    if (!token || !authUser) return
+    const clientId = getActiveClient()?.id || ''
+
+    const fetchCosts = () => {
+      fetch(`${SERVER}/api/analytics?client_id=${clientId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(r => r.json())
+        .then(d => { setCostToday(d.totalCost || 0) })
+        .catch(() => {})
+    }
+
+    fetchCosts()
+    const interval = setInterval(fetchCosts, 10000)
+    return () => clearInterval(interval)
+  }, [authUser])
 
   if (!authUser) return <LoginScreen onLogin={(u, role) => { setAuthUser(u); setAuthRole(role) }} />
 
@@ -4116,6 +4323,38 @@ export default function App() {
           Galería
         </button>
 
+        {/* Herramientas — satélites */}
+        <span style={{width:1,height:14,background:'rgba(255,255,255,0.1)',margin:'0 2px'}}/>
+        <button
+          className="glass-btn glass-btn-neutral"
+          title="LandingPro — generador de landing pages"
+          style={{padding:'6px 12px',fontSize:12,fontWeight:500,
+            letterSpacing:'-0.01em',display:'flex',alignItems:'center',gap:6,
+            color:'rgba(167,139,250,0.75)',
+          }}
+          onClick={()=>addNode('landingPro',300,220)}>
+          <Globe style={{width:13,height:13}}/>
+          LandingPro
+        </button>
+
+        {/* Reset Canvas */}
+        <span style={{width:1,height:14,background:'rgba(255,255,255,0.1)',margin:'0 2px'}}/>
+        <button
+          className="glass-btn glass-btn-neutral"
+          title="Limpiar canvas y resetear estado"
+          style={{padding:'6px 12px',fontSize:12,fontWeight:500,
+            letterSpacing:'-0.01em',display:'flex',alignItems:'center',gap:6,
+            color:'rgba(239,68,68,0.65)',
+          }}
+          onClick={()=>{
+            if(confirm('¿Limpiar todo el canvas? Los nodos se eliminarán.')) {
+              setNodes([]); setEdges([])
+            }
+          }}>
+          <Trash2 style={{width:13,height:13}}/>
+          Reset
+        </button>
+
         {/* Separador + usuario + logout */}
         <span style={{width:1,height:14,background:'rgba(255,255,255,0.1)',margin:'0 2px'}}/>
         <span style={{fontSize:11,color:'rgba(255,255,255,0.28)',padding:'0 4px 0 6px',fontWeight:500}}>
@@ -4231,10 +4470,56 @@ export default function App() {
         onItemClick={setLightboxItem}
       />
 
+      {/* Badge flotante costo en tiempo real */}
+      <div style={{
+        position:'fixed',bottom:24,left:24,zIndex:40,
+        background:'rgba(5,5,12,0.92)',backdropFilter:'blur(20px)',
+        border:'1px solid rgba(59,130,246,0.3)',borderRadius:10,
+        padding:'12px 16px',
+        display:'flex',alignItems:'center',gap:8,
+        boxShadow:'0 4px 20px rgba(0,0,0,0.5)',
+      }}>
+        <Coins style={{width:14,height:14,color:'rgba(96,165,250,0.8)'}}/>
+        <div>
+          <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',fontWeight:500}}>HOY</div>
+          <div style={{fontSize:13,color:'rgba(255,255,255,0.9)',fontWeight:700}}>
+            ${costToday.toFixed(2)}
+          </div>
+        </div>
+      </div>
+
       {/* Lightbox global */}
       {lightboxItem && (
         <Lightbox item={lightboxItem} onClose={()=>setLightboxItem(null)}/>
       )}
     </div>
   )
+}
+
+class AppErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null } }
+  static getDerivedStateFromError(error) { return { error } }
+  render() {
+    if (this.state.error) return (
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+        height:'100vh',background:'#05050c',color:'rgba(255,255,255,0.7)',gap:16,fontFamily:'sans-serif'}}>
+        <div style={{fontSize:32}}>⚠️</div>
+        <div style={{fontSize:18,fontWeight:600,color:'rgba(255,255,255,0.9)'}}>Error inesperado</div>
+        <div style={{fontSize:13,color:'rgba(255,255,255,0.4)',maxWidth:400,textAlign:'center'}}>
+          {this.state.error?.message || 'Error desconocido'}
+        </div>
+        <button onClick={()=>this.setState({error:null})}
+          style={{marginTop:8,padding:'8px 20px',background:'rgba(167,139,250,0.15)',
+            border:'1px solid rgba(167,139,250,0.3)',borderRadius:8,color:'rgba(167,139,250,0.9)',
+            cursor:'pointer',fontSize:13}}>
+          Reintentar
+        </button>
+      </div>
+    )
+    return this.props.children
+  }
+}
+
+export default function AppWithBoundary() {
+  return <AppErrorBoundary><App/></AppErrorBoundary>
 }

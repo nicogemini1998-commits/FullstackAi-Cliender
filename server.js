@@ -739,7 +739,7 @@ function buildInput(model, { prompt, aspectRatio, resolution, duration, refImage
     return input
   }
 
-  if (model === 'bytedance/seedance-2' || model === 'seedance-2-krea') {
+  if (model === 'bytedance/seedance-2' || model === 'bytedance/seedance-2-fast' || model === 'seedance-2-krea') {
     const input = {
       prompt,
       aspect_ratio: aspectRatio || '16:9',
@@ -747,6 +747,8 @@ function buildInput(model, { prompt, aspectRatio, resolution, duration, refImage
       web_search: !!(extra?.webSearch),
       nsfw_checker: !!(extra?.nsfwCheck),
     }
+    // Agregar resolución si se especifica
+    if (resolution) input.resolution = resolution
     if (extra?.returnLastFrame) input.return_last_frame = true
 
     const hasVisual = imgs.length || vids.length  // imagen o vídeo
@@ -1138,8 +1140,9 @@ if (dbReady) {
   }, 3600000) // cada hora
 }
 
-httpServer.listen(3001, () => {
-  console.log('🚀 Cliender OS Server → http://localhost:3001')
+const PORT = process.env.PORT || 3001
+httpServer.listen(PORT, () => {
+  console.log('🚀 Cliender OS Server → http://localhost:' + PORT)
   console.log(`🔑 KIE AI: ${KIE_KEY ? '✅ API key configurada' : '❌ falta KIE_API_KEY en .env'}`)
   console.log(`⚡ Workflow file: ${WF_FILE}`)
 })

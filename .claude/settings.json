@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm audit *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); vulns=d.get\\('vulnerabilities',{}\\); [print\\(k,v.get\\('severity'\\),v.get\\('via',[{}]\\)[0] if isinstance\\(v.get\\('via',[{}]\\)[0],str\\) else v.get\\('via',[{}]\\)[0].get\\('title',''\\)\\) for k,v in vulns.items\\(\\) if v.get\\('severity'\\) in \\('critical','high'\\)]\")",
+      "Bash(npx next *)",
+      "Bash(npm remove *)",
+      "Bash(rsync -azh --delete -e \"ssh -i ~/.ssh/fullstackai_deploy\" dist/ root@185.97.144.72:/var/www/fullstackai/dist/)",
+      "Bash(rsync -azh -e \"ssh -i ~/.ssh/fullstackai_deploy\" server.js root@185.97.144.72:/var/www/fullstackai/)",
+      "Bash(npm run *)",
+      "Bash(curl -s http://localhost:3005/api/health)",
+      "Bash(pkill -f \"landingpro\")",
+      "Bash(curl -s http://localhost:3004/ -o /dev/null -w \"Next.js: %{http_code}\\\\n\")",
+      "Bash(curl -s http://localhost:3004/ -o /dev/null -w \"Next.js :3004 → %{http_code}\\\\n\")",
+      "Bash(psql -U postgres -c \"\\\\l\")",
+      "Bash(psql postgres *)",
+      "Read(//Applications/Postgres.app/Contents/**)",
+      "Bash(brew services *)",
+      "Bash(PGPASSWORD=fai_db_2024_secure psql -h 127.0.0.1 -U fai_user -d fullstackai -c \"CREATE DATABASE landingpro;\")",
+      "Read(//Applications/**)",
+      "Bash(node -e \"import\\('pg'\\).then\\(\\({default:pg}\\)=>{const {Client}=pg;const c=new Client\\({host:'127.0.0.1',port:5432,database:'fullstackai',user:'fai_user',password:'fai_db_2024_secure'}\\);c.connect\\(\\).then\\(\\(\\)=>{console.log\\('DB connected'\\);return c.query\\('SELECT version\\(\\)'\\)}\\).then\\(r=>console.log\\(r.rows[0].version.slice\\(0,30\\)\\)\\).catch\\(e=>console.error\\('DB error:',e.message\\)\\).finally\\(\\(\\)=>c.end\\(\\)\\)}\\)\")",
+      "Bash(node -e ' *)"
+    ],
+    "additionalDirectories": [
+      "/Users/nicolasag/Desktop/Landingpro/src/app/landing",
+      "/Users/nicolasag/Desktop/Landingpro"
+    ]
+  }
+}
