@@ -1042,6 +1042,7 @@ const ImageNode = ({ id, data }) => {
   const [seed, setSeed]                   = useState('aleatorio')
   const [rawMode, setRawMode]             = useState(false)
   const [selectOpen, setSelectOpen]        = useState(false)
+  const [blockInteraction, setBlockInteraction] = useState(false)
   const poll  = usePoll(3000)
   const model = IMAGE_MODELS[mIdx]
 
@@ -1280,7 +1281,7 @@ const ImageNode = ({ id, data }) => {
   )
 
   return (
-    <Shell hex={C.image} minW={280} minH={380} handles={handles}>
+    <Shell hex={C.image} minW={280} minH={380} handles={handles} style={{pointerEvents: blockInteraction ? 'none' : 'auto'}}>
       {/* ── Top bar: Run + model + close */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
         padding:'8px 10px 8px 10px',borderBottom:'1px solid rgba(255,255,255,0.05)',flexShrink:0}}>
@@ -1364,7 +1365,11 @@ const ImageNode = ({ id, data }) => {
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
           padding:'7px 14px',borderBottom:'1px solid rgba(255,255,255,0.04)'}} className={selectOpen?'nodrag':''}>
           <div style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
-            <select value={mIdx} onChange={e=>setMIdx(Number(e.target.value))}
+            <select value={mIdx} onChange={e=>{
+              setBlockInteraction(true)
+              setMIdx(Number(e.target.value))
+              setTimeout(()=>setBlockInteraction(false), 300)
+            }}
               onFocus={()=>setSelectOpen(true)} onBlur={()=>setSelectOpen(false)}
               style={{appearance:'none',background:'transparent',color:'rgba(255,255,255,0.55)',
                 fontSize:11,fontWeight:500,borderRadius:7,padding:'2px 18px 2px 0px',
