@@ -715,6 +715,12 @@ function buildInput(model, { prompt, aspectRatio, resolution, duration, refImage
     return input
   }
 
+  if (model === 'gpt-image-2') {
+    const input = { prompt, aspect_ratio: aspectRatio || '1:1', resolution: resolution || '1K' }
+    if (imgs.length) input.image_url = imgs             // GPT Image 2: imágenes de entrada para image-to-image
+    return input
+  }
+
   // ── Videos ────────────────────────────────────────────────────────────────
 
   if (model === 'kling-2.6/text-to-video') {
@@ -736,6 +742,27 @@ function buildInput(model, { prompt, aspectRatio, resolution, duration, refImage
     const map = { '16:9': 'landscape', '9:16': 'portrait' }
     const input = { prompt, aspect_ratio: map[aspectRatio] || 'landscape', n_frames: 10 }
     if (imgs.length) input.image_url = imgs[0]          // Sora-2: imagen de referencia
+    return input
+  }
+
+  if (model === 'bytedance/seedance-1.5') {
+    const input = {
+      prompt,
+      aspect_ratio: aspectRatio || '16:9',
+      duration: Number(duration) || 5,
+      nsfw_checker: !!(extra?.nsfwCheck),
+    }
+    if (resolution) input.resolution = resolution
+    if (extra?.returnLastFrame) input.return_last_frame = true
+    // Seedance 1.5 Pro — siempre requiere referencia visual
+    if (imgs.length) input.reference_image_urls = imgs
+    if (vids.length) input.reference_video_urls = vids
+    if (auds.length) {
+      input.reference_audio_urls = auds
+      input.generate_audio = false
+    } else {
+      input.generate_audio = !!(extra?.generateAudio)
+    }
     return input
   }
 
