@@ -99,7 +99,7 @@ const IMAGE_MODELS = [
   // ── KIE AI — Nano Banana ────────────────────────────────────────────────────
   { id:'nano-banana-2', label:'Nano Banana 2', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, sync:false },
   { id:'nano-banana-pro', label:'Nano Banana Pro', ar:['1:1','4:3','3:4','16:9','9:16','3:2','2:3'], res:[], imgInput:false, sync:false },
-  { id:'gpt-image-2', label:'GPT Image 2', ar:['1:1','9:16','16:9','4:3','3:4'], res:['1K','2K','4K'], imgInput:true, sync:false },
+  { id:'gpt-image-2-text-to-image', label:'GPT Image 2', ar:['1:1','9:16','16:9','4:3','3:4'], res:['1K','2K','4K'], imgInput:true, sync:false },
 ]
 
 const VIDEO_MODELS = [
@@ -128,7 +128,7 @@ const calcVideoCost = (modelId, resolution = '720p', duration = 5, hasVideoRef =
 const MODEL_COSTS = {
   'nano-banana-2':           0.025,
   'nano-banana-pro':         0.040,
-  'gpt-image-2':             0.045,
+  'gpt-image-2-text-to-image': 0.045,
   'bytedance/seedance-1.5':  0.025,
 }
 

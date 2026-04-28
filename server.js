@@ -715,7 +715,7 @@ function buildInput(model, { prompt, aspectRatio, resolution, duration, refImage
     return input
   }
 
-  if (model === 'gpt-image-2') {
+  if (model === 'gpt-image-2-text-to-image') {
     const input = { prompt, aspect_ratio: aspectRatio || '1:1', resolution: resolution || '1K' }
     if (imgs.length) input.image_url = imgs             // GPT Image 2: imágenes de entrada para image-to-image
     return input
