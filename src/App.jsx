@@ -103,15 +103,26 @@ const IMAGE_MODELS = [
 ]
 
 const VIDEO_MODELS = [
-  { id:'bytedance/seedance-1.5', label:'Seedance 1.5 Pro', ar:['16:9','9:16','1:1','4:3','4:5'], dur:['5','8','10'], sImg:true, maxImg:10 },
+  { id:'bytedance/seedance-1.5', label:'Seedance 1.5 Pro', ar:['16:9','9:16','1:1','4:3','4:5'], dur:['5','8','10'], sImg:true, sVid:true, sAud:true, maxImg:10, requiresRef:true },
+  { id:'bytedance/seedance-2', label:'Seedance 2.0', ar:['16:9','4:3','1:1','3:4','9:16','21:9'], dur:['4','5','8','10','12','15'], sImg:true, sVid:true, sAud:true, maxImg:9, requiresRef:true },
+  { id:'bytedance/seedance-2-fast', label:'Seedance 2.0 Fast', ar:['16:9','4:3','1:1','3:4','9:16','21:9'], dur:['4','5','8','10','12','15'], sImg:true, sVid:true, sAud:true, maxImg:9, requiresRef:true },
 ]
 
-// Costos por segundo según modelo y resolución — Seedance 1.5 Pro requiere referencia visual
+// Costos por segundo según modelo y resolución — Seedance requiere referencia visual
 const VIDEO_COST_MAP = {
   'bytedance/seedance-1.5': {
     '1080p': { withVideo: 0.28, noVideo: 0.28 },
     '720p':  { withVideo: 0.115, noVideo: 0.115 },
     '480p':  { withVideo: 0.085, noVideo: 0.085 },
+  },
+  'bytedance/seedance-2': {
+    '1080p': { withVideo: 0.25, noVideo: 0.45 },
+    '720p':  { withVideo: 0.10, noVideo: 0.18 },
+    '480p':  { withVideo: 0.08, noVideo: 0.14 },
+  },
+  'bytedance/seedance-2-fast': {
+    '720p':  { withVideo: 0.08, noVideo: 0.13 },
+    '480p':  { withVideo: 0.04, noVideo: 0.065 },
   },
 }
 
@@ -1592,8 +1603,9 @@ const VideoNode = ({ id, data }) => {
   const [cost, setCost]         = useState(0)
   const [err,   setErr]   = useState(null)
   const [openScenarios, setOpenScenarios] = useState(false)
+  const [blockInteraction, setBlockInteraction] = useState(false)
   const poll = usePoll(5000)
-  const m = VIDEO_MODELS[0]
+  const m = VIDEO_MODELS[mIdx]
   const hasRef = kf.length > 0 || rv.length > 0
 
   // Auto-trigger desde agente o terminal
@@ -1601,7 +1613,7 @@ const VideoNode = ({ id, data }) => {
     if (!data.incomingPrompt && !data.autoTrigger) return
     const p = data.autoPrompt || data.incomingPrompt || ''
     if (p) setPrompt(p)
-    // Seedance 1.5 Pro — modelo fijo, no hay selector
+    if (data.autoModel) setMIdx(VIDEO_MODELS.findIndex(mod=>mod.id===data.autoModel))
     if (data.autoAr) setAr(data.autoAr)
     if (data.autoDuration) setDur(String(data.autoDuration))
     setNodes(nds=>nds.map(n=>n.id===id?{...n,data:{...n.data,
@@ -1612,7 +1624,7 @@ const VideoNode = ({ id, data }) => {
   // Función de generación — captura el state actual en el momento del click
   const generate = async () => {
     if (!prompt.trim() || busy) return
-    if (!hasRef) { setErr('Seedance 1.5 Pro requiere al menos un fotograma clave o vídeo de referencia'); return }
+    if (m.requiresRef && !hasRef) { setErr(`${m.label} requiere referencia (imagen, vídeo o audio)`); return }
     setBusy(true); setErr(null); setVideoUrl(null); setProg(0)
     const thisNode = getNode(id)
     const pos = thisNode?.position || { x:0, y:0 }
@@ -1675,7 +1687,7 @@ const VideoNode = ({ id, data }) => {
   )
 
   return (
-    <Shell hex={C.video} minW={300} minH={380} handles={vidHandles}>
+    <Shell hex={C.video} minW={300} minH={380} handles={vidHandles} style={{pointerEvents: blockInteraction ? 'none' : 'auto'}}>
       {/* ── Top bar */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
         padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,0.05)',flexShrink:0}}>
@@ -1748,8 +1760,22 @@ const VideoNode = ({ id, data }) => {
       <div style={{flex:1,overflow:'auto',display:'flex',flexDirection:'column'}} className="nowheel nopan">
         {/* Tipo + Modelo */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
-          padding:'7px 14px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
-          <span style={{fontSize:11,color:'rgba(255,255,255,0.55)',fontWeight:500}}>{m.label}</span>
+          padding:'7px 14px',borderBottom:'1px solid rgba(255,255,255,0.04)'}} className={blockInteraction?'nodrag':''}>
+          <div style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
+            <select value={mIdx} onChange={e=>{
+              setBlockInteraction(true)
+              setMIdx(Number(e.target.value))
+              setTimeout(()=>setBlockInteraction(false), 300)
+            }}
+              style={{appearance:'none',background:'transparent',color:'rgba(255,255,255,0.55)',
+                fontSize:11,fontWeight:500,borderRadius:7,padding:'2px 18px 2px 0px',
+                border:'none',outline:'none',cursor:'pointer',
+                fontFamily:'Plus Jakarta Sans,sans-serif',maxWidth:130}}>
+              {VIDEO_MODELS.map((mod,i)=><option key={mod.id} value={i}>{mod.label}</option>)}
+            </select>
+            <ChevronDown style={{position:'absolute',right:0,top:'50%',transform:'translateY(-50%)',
+              width:9,height:9,color:'rgba(255,255,255,0.25)',pointerEvents:'none'}}/>
+          </div>
           <div style={{display:'flex',alignItems:'center',gap:6}}>
             <span style={{fontSize:11,color:'rgba(255,255,255,0.32)',fontWeight:450}}>Video</span>
             <span style={{width:7,height:7,borderRadius:'50%',background:C.video,boxShadow:`0 0 7px ${C.video}`}}/>
