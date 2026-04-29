@@ -1053,7 +1053,6 @@ const ImageNode = ({ id, data }) => {
   const [seed, setSeed]                   = useState('aleatorio')
   const [rawMode, setRawMode]             = useState(false)
   const [selectOpen, setSelectOpen]        = useState(false)
-  const [blockInteraction, setBlockInteraction] = useState(false)
   const poll  = usePoll(3000)
   const model = IMAGE_MODELS[mIdx]
 
@@ -1292,7 +1291,7 @@ const ImageNode = ({ id, data }) => {
   )
 
   return (
-    <Shell hex={C.image} minW={280} minH={380} handles={handles} style={{pointerEvents: blockInteraction ? 'none' : 'auto'}}>
+    <Shell hex={C.image} minW={280} minH={380} handles={handles}>
       {/* ── Top bar: Run + model + close */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
         padding:'8px 10px 8px 10px',borderBottom:'1px solid rgba(255,255,255,0.05)',flexShrink:0}}>
@@ -1374,13 +1373,9 @@ const ImageNode = ({ id, data }) => {
 
         {/* Tipo indicator */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
-          padding:'7px 14px',borderBottom:'1px solid rgba(255,255,255,0.04)'}} className={selectOpen?'nodrag':''}>
+          padding:'7px 14px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
           <div style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
-            <select value={mIdx} onChange={e=>{
-              setBlockInteraction(true)
-              setMIdx(Number(e.target.value))
-              setTimeout(()=>setBlockInteraction(false), 300)
-            }}
+            <select value={mIdx} onChange={e=>setMIdx(Number(e.target.value))}
               onFocus={()=>setSelectOpen(true)} onBlur={()=>setSelectOpen(false)}
               style={{appearance:'none',background:'transparent',color:'rgba(255,255,255,0.55)',
                 fontSize:11,fontWeight:500,borderRadius:7,padding:'2px 18px 2px 0px',
@@ -1603,7 +1598,6 @@ const VideoNode = ({ id, data }) => {
   const [cost, setCost]         = useState(0)
   const [err,   setErr]   = useState(null)
   const [openScenarios, setOpenScenarios] = useState(false)
-  const [blockInteraction, setBlockInteraction] = useState(false)
   const poll = usePoll(5000)
   const m = VIDEO_MODELS[mIdx]
   const hasRef = kf.length > 0 || rv.length > 0
@@ -1687,7 +1681,7 @@ const VideoNode = ({ id, data }) => {
   )
 
   return (
-    <Shell hex={C.video} minW={300} minH={380} handles={vidHandles} style={{pointerEvents: blockInteraction ? 'none' : 'auto'}}>
+    <Shell hex={C.video} minW={300} minH={380} handles={vidHandles}>
       {/* ── Top bar */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
         padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,0.05)',flexShrink:0}}>
@@ -1760,13 +1754,9 @@ const VideoNode = ({ id, data }) => {
       <div style={{flex:1,overflow:'auto',display:'flex',flexDirection:'column'}} className="nowheel nopan">
         {/* Tipo + Modelo */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
-          padding:'7px 14px',borderBottom:'1px solid rgba(255,255,255,0.04)'}} className={blockInteraction?'nodrag':''}>
+          padding:'7px 14px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
           <div style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
-            <select value={mIdx} onChange={e=>{
-              setBlockInteraction(true)
-              setMIdx(Number(e.target.value))
-              setTimeout(()=>setBlockInteraction(false), 300)
-            }}
+            <select value={mIdx} onChange={e=>setMIdx(Number(e.target.value))}
               style={{appearance:'none',background:'transparent',color:'rgba(255,255,255,0.55)',
                 fontSize:11,fontWeight:500,borderRadius:7,padding:'2px 18px 2px 0px',
                 border:'none',outline:'none',cursor:'pointer',
