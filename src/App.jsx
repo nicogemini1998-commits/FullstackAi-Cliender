@@ -103,9 +103,9 @@ const IMAGE_MODELS = [
 ]
 
 const VIDEO_MODELS = [
-  { id:'bytedance/seedance-1.5', label:'Seedance 1.5 Pro', ar:['16:9','9:16','1:1','4:3','4:5'], dur:['5','8','10'], sImg:true, sVid:true, sAud:true, maxImg:10, requiresRef:true },
-  { id:'bytedance/seedance-2', label:'Seedance 2.0', ar:['16:9','4:3','1:1','3:4','9:16','21:9'], dur:['4','5','8','10','12','15'], sImg:true, sVid:true, sAud:true, maxImg:9, requiresRef:true },
-  { id:'bytedance/seedance-2-fast', label:'Seedance 2.0 Fast', ar:['16:9','4:3','1:1','3:4','9:16','21:9'], dur:['4','5','8','10','12','15'], sImg:true, sVid:true, sAud:true, maxImg:9, requiresRef:true },
+  { id:'bytedance/seedance-1.5', label:'Seedance 1.5 Pro', ar:['16:9','9:16','1:1','4:3','4:5'], dur:['5','8','10'], sImg:true, sVid:true, sAud:true, maxImg:10 },
+  { id:'bytedance/seedance-2', label:'Seedance 2.0', ar:['16:9','4:3','1:1','3:4','9:16','21:9'], dur:['4','5','8','10','12','15'], sImg:true, sVid:true, sAud:true, maxImg:9 },
+  { id:'bytedance/seedance-2-fast', label:'Seedance 2.0 Fast', ar:['16:9','4:3','1:1','3:4','9:16','21:9'], dur:['4','5','8','10','12','15'], sImg:true, sVid:true, sAud:true, maxImg:9 },
 ]
 
 // Costos por segundo según modelo y resolución — Seedance requiere referencia visual
@@ -1618,7 +1618,6 @@ const VideoNode = ({ id, data }) => {
   // Función de generación — captura el state actual en el momento del click
   const generate = async () => {
     if (!prompt.trim() || busy) return
-    if (m.requiresRef && !hasRef) { setErr(`${m.label} requiere referencia (imagen, vídeo o audio)`); return }
     setBusy(true); setErr(null); setVideoUrl(null); setProg(0)
     const thisNode = getNode(id)
     const pos = thisNode?.position || { x:0, y:0 }
@@ -1685,12 +1684,12 @@ const VideoNode = ({ id, data }) => {
       {/* ── Top bar */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
         padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,0.05)',flexShrink:0}}>
-        <button onClick={()=>generate()} disabled={busy||!prompt.trim()||!hasRef}
-          style={{display:'flex',alignItems:'center',gap:5,cursor:busy||!prompt.trim()||!hasRef?'not-allowed':'pointer',
+        <button onClick={()=>generate()} disabled={busy||!prompt.trim()}
+          style={{display:'flex',alignItems:'center',gap:5,cursor:busy||!prompt.trim()?'not-allowed':'pointer',
             background:busy?'rgba(167,139,250,0.15)':'rgba(167,139,250,0.12)',
             border:`1px solid rgba(167,139,250,${busy?'0.35':'0.22'})`,
             borderRadius:999,padding:'4px 9px',color:'rgba(255,255,255,0.8)',fontSize:11,fontWeight:600,
-            transition:`all 200ms ${SPRING}`,opacity:(!prompt.trim()||!hasRef)?0.5:1}}>
+            transition:`all 200ms ${SPRING}`,opacity:!prompt.trim()?0.5:1}}>
           {busy
             ? <><Loader2 style={{width:9,height:9}} className="animate-spin"/> {prog>0?`${prog}%`:'Enviando…'}</>
             : <><Play style={{width:9,height:9,fill:'currentColor',color:C.video}}/> Ejecutar nodo</>}
@@ -1789,12 +1788,6 @@ const VideoNode = ({ id, data }) => {
             className="placeholder-white/20 nowheel nopan nodrag"/>
         </div>
 
-        {!hasRef && !err && (
-          <div style={{padding:'6px 14px',fontSize:10,color:'rgba(167,139,250,0.5)',
-            background:'rgba(167,139,250,0.06)',borderBottom:'1px solid rgba(167,139,250,0.1)'}}>
-            Sube fotogramas clave o un vídeo de referencia para activar la generación
-          </div>
-        )}
         {err && <div style={{padding:'0 10px 8px'}}><ErrBox msg={err}/></div>}
 
         {/* ── Escenarios collapsible */}
